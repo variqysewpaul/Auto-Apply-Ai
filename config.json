@@ -1,0 +1,73 @@
+{
+    "name": "Variq Sewpaul",
+    "email": "sewpaulvariq@gmail.com",
+    "phone": "0832061260",
+    "address": "Durban North, 6 Ocean Place, 4051",
+    "linkedin_url": "your_linkedin_url",
+    "github_url": "github.com/variqsewpaul",
+    "portfolio_url": "",
+    "experience": [
+        {
+            "title": "Online Lecturer Assistant",
+            "company": "University/College",
+            "duration": "Current",
+            "description": "Working remotely part-time during studies. Assisting with programming."
+        },
+        {
+            "title": "Founder & Lead Developer",
+            "company": "Service Marketplace (Pty) Ltd",
+            "duration": "Dec 2025 - Present",
+            "description": "Directed a diverse team of six developers through the full SDLC of a high-complexity marketplace platform. Architected a serverless backend using Supabase and Node.js. Managed CI/CD pipelines via Vercel. Implemented secure Paystack payment gateway. Developed responsive UI using Tailwind CSS."
+        },
+        {
+            "title": "Database Administrator",
+            "company": "E-commerce Platform",
+            "duration": "Previous",
+            "description": "Worked on both back-end and front-end. Managed a full e-commerce platform app with more than 10,000 items and handled sales."
+        }
+    ],
+    "education": [
+        {
+            "degree": "Final Year Student",
+            "university": "Current University",
+            "duration": "Current"
+        }
+    ],
+    "certifications": [
+        {
+            "name": "Elements of AI Certification",
+            "skills_acquired": ["AI", "Generative AI Development", "Artificial Neural Networks", "Linear Regression", "Linear Logistics Algorithms"]
+        },
+        {
+            "name": "BCG Job Simulation",
+            "skills_acquired": ["Data Extraction", "AI-powered Development", "Data Science Tools", "Generative AI Development", "Financial Analysis", "Natural Language Processing", "Python Programming"]
+        },
+        {
+            "name": "Forage Academy Data Labeling Job Simulation",
+            "skills_acquired": ["Documentation", "Feedback Delivery", "Data Privacy", "Attention to Detail", "Analytical Skills"]
+        }
+    ],
+    "skills": [
+        "Python", "Node.js", "Supabase", "Tailwind CSS",
+        "Database Administration", "Data Extraction", "AI", "Generative AI", "NLP",
+        "Linear Regression", "Neural Networks", "Data Privacy", "UI/UX Design", "Web Development"
+    ],
+    "search_criteria": {
+        "titles": [
+            "Data Labeler",
+            "AI Reviewer",
+            "AI Data Extraction",
+            "Web Developer",
+            "Frontend Developer",
+            "Backend Developer",
+            "Full-Stack Developer",
+            "UI/UX Designer",
+            "AI Developer"
+        ],
+        "locations": ["Remote"],
+        "remote_only": true,
+        "part_time": true,
+        "internships": true,
+        "entry_level": true
+    }
+}
