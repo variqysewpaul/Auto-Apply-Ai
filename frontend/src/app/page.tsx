@@ -28,6 +28,7 @@ export default function DashboardPage() {
 
   // Connection indicator for Supabase
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(false);
+  const [supabaseUser, setSupabaseUser] = useState<any>(null);
 
   // Realtime Telemetry Sync State
   const [activeElement, setActiveElement] = useState<string>("");
@@ -223,12 +224,26 @@ Instructions:
       loadSupabaseProfile();
       loadSupabaseApplications();
     }
+
+    // Subscribe to authentication state changes dynamically
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setSupabaseUser(session.user);
+      } else {
+        setSupabaseUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadSupabaseProfile = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        setSupabaseUser(user);
         const { data, error } = await supabase
           .from("profiles")
           .select("*")
@@ -250,6 +265,32 @@ Instructions:
       }
     } catch (e) {
       console.error("Could not fetch user profile from Supabase:", e);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setSupabaseUser(null);
+      
+      // Reset profile state to premium defaults
+      setProfile({
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.com",
+        phone: "+1 (555) 019-2834",
+        address: "120 Hawthorne St",
+        city: "San Francisco, CA",
+        githubUrl: "https://github.com/alexrivera",
+        linkedinUrl: "https://linkedin.com/in/alexrivera",
+        targetKeywords: "Senior React Developer, Frontend Engineer, Software Engineer",
+        skills: "React, TypeScript, Next.js, Node.js, Playwright, Python, LLMs, CSS Grid",
+        groqKey: ""
+      });
+      
+      setAlertMessage({ type: "info", text: "Logged out of Supabase successfully." });
+      setTimeout(() => setAlertMessage(null), 3000);
+    } catch (error: any) {
+      console.error("Logout failed:", error);
     }
   };
 
@@ -633,14 +674,41 @@ Instructions:
         </nav>
 
         {/* User context footer */}
-        <div className="glass-panel" style={{ padding: "16px", borderRadius: "10px", display: "flex", gap: "12px", alignItems: "center" }}>
-          <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg, var(--color-primary), var(--color-secondary))", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
-            AR
+        <div className="glass-panel" style={{ padding: "16px", borderRadius: "10px", display: "flex", gap: "12px", alignItems: "center", position: "relative", width: "100%", overflow: "hidden" }}>
+          <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg, var(--color-primary), var(--color-secondary))", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.85rem", flexShrink: 0 }}>
+            {supabaseUser ? (profile.fullName?.slice(0, 2).toUpperCase() || supabaseUser.email?.slice(0, 2).toUpperCase() || "U") : "AR"}
           </div>
           <div style={{ minWidth: 0, flexGrow: 1 }}>
-            <p style={{ fontSize: "0.85rem", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Alex Rivera</p>
-            <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Premium Member</p>
+            <p style={{ fontSize: "0.85rem", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {supabaseUser ? (profile.fullName || supabaseUser.email) : "Alex Rivera"}
+            </p>
+            <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {supabaseUser ? "Active Session" : "Premium Member"}
+            </p>
           </div>
+          {supabaseUser && (
+            <button 
+              onClick={handleLogout}
+              title="Log Out of Supabase"
+              style={{
+                background: "rgba(239, 68, 68, 0.15)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "#f87171",
+                padding: "6px 10px",
+                borderRadius: "6px",
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                transition: "all 0.2s",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0
+              }}
+            >
+              🚪 Logout
+            </button>
+          )}
         </div>
       </aside>
 
