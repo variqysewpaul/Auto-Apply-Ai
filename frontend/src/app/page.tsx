@@ -61,6 +61,12 @@ export default function DashboardPage() {
   // Interactive Onboarding On/Off State
   const [showOnboarding, setShowOnboarding] = useState<boolean>(true);
 
+  // Supabase Auth Form States
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authEmail, setAuthEmail] = useState<string>("");
+  const [authPassword, setAuthPassword] = useState<string>("");
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
+
   // Applications Database Logs
   const [applications, setApplications] = useState<ApplicationRecord[]>([
     {
@@ -229,6 +235,8 @@ Instructions:
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setSupabaseUser(session.user);
+        loadSupabaseProfile();
+        loadSupabaseApplications();
       } else {
         setSupabaseUser(null);
       }
@@ -291,6 +299,38 @@ Instructions:
       setTimeout(() => setAlertMessage(null), 3000);
     } catch (error: any) {
       console.error("Logout failed:", error);
+    }
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthLoading(true);
+    try {
+      if (authMode === "login") {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword
+        });
+        if (error) throw error;
+        setAlertMessage({ type: "success", text: "Successfully authenticated!" });
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword
+        });
+        if (error) throw error;
+        setAlertMessage({ 
+          type: "success", 
+          text: data.session ? "Account created and logged in!" : "Account created! Please check your email for confirmation." 
+        });
+      }
+      setAuthPassword("");
+    } catch (error: any) {
+      console.error("Authentication error:", error);
+      setAlertMessage({ type: "info", text: `Authentication Error: ${error.message}` });
+    } finally {
+      setIsAuthLoading(false);
+      setTimeout(() => setAlertMessage(null), 5000);
     }
   };
 
@@ -686,7 +726,7 @@ Instructions:
               {supabaseUser ? "Active Session" : "Premium Member"}
             </p>
           </div>
-          {supabaseUser && (
+          {supabaseUser ? (
             <button 
               onClick={handleLogout}
               title="Log Out of Supabase"
@@ -707,6 +747,28 @@ Instructions:
               }}
             >
               🚪 Logout
+            </button>
+          ) : (
+            <button 
+              onClick={() => setActiveTab("settings")}
+              title="Connect to Cloud Sync"
+              style={{
+                background: "rgba(0, 242, 254, 0.15)",
+                border: "1px solid rgba(0, 242, 254, 0.3)",
+                color: "var(--color-primary)",
+                padding: "6px 10px",
+                borderRadius: "6px",
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                transition: "all 0.2s",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0
+              }}
+            >
+              🔑 Sync
             </button>
           )}
         </div>
@@ -1434,6 +1496,120 @@ Instructions:
                 Verify connections to external databases and backend APIs.
               </p>
             </div>
+
+            {/* Supabase Authentication Panel */}
+            {!supabaseUser ? (
+              <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "20px", border: "1px solid rgba(0, 242, 254, 0.2)", background: "rgba(10, 15, 30, 0.3)" }}>
+                <div>
+                  <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>🔐</span> Supabase User Authentication
+                  </h3>
+                  <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
+                    Sign in or create a new account to unlock cloud storage for your profile, applications, and real-time Playwright telemetry tracking.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "12px", background: "rgba(0,0,0,0.2)", padding: "4px", borderRadius: "8px", width: "fit-content" }}>
+                  <button 
+                    onClick={() => setAuthMode("login")}
+                    style={{ 
+                      padding: "8px 16px", 
+                      borderRadius: "6px", 
+                      fontSize: "0.8rem", 
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      border: "none",
+                      background: authMode === "login" ? "rgba(0, 242, 254, 0.15)" : "transparent",
+                      color: authMode === "login" ? "var(--color-primary)" : "var(--color-text-secondary)"
+                    }}
+                  >
+                    Sign In
+                  </button>
+                  <button 
+                    onClick={() => setAuthMode("register")}
+                    style={{ 
+                      padding: "8px 16px", 
+                      borderRadius: "6px", 
+                      fontSize: "0.8rem", 
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      border: "none",
+                      background: authMode === "register" ? "rgba(0, 242, 254, 0.15)" : "transparent",
+                      color: authMode === "register" ? "var(--color-primary)" : "var(--color-text-secondary)"
+                    }}
+                  >
+                    Create Account
+                  </button>
+                </div>
+
+                <form onSubmit={handleAuthSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Email Address</label>
+                      <input 
+                        type="email" 
+                        value={authEmail} 
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="e.g. yourname@domain.com"
+                        className="glass-input" 
+                        required
+                      />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Password</label>
+                      <input 
+                        type="password" 
+                        value={authPassword} 
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="glass-input" 
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={isAuthLoading}
+                    className="glass-btn" 
+                    style={{ alignSelf: "flex-end", display: "flex", alignItems: "center", gap: "8px" }}
+                  >
+                    {isAuthLoading ? (
+                      <span className="animate-spin-slow" style={{ display: "inline-block", width: "12px", height: "12px", border: "2px solid transparent", borderTopColor: "#fff", borderRadius: "50%" }} />
+                    ) : null}
+                    {authMode === "login" ? "SIGN IN" : "REGISTER ACCOUNT"}
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <div className="glass-panel" style={{ padding: "24px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid rgba(52, 211, 153, 0.2)", background: "rgba(10, 30, 20, 0.2)" }}>
+                <div>
+                  <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ color: "var(--color-success)" }}>🟢</span> Connected to Cloud Sync
+                  </h3>
+                  <p style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", marginTop: "4px" }}>
+                    Logged in securely as <strong style={{ color: "var(--color-primary)" }}>{supabaseUser.email}</strong>. All candidate details and application logs are actively synchronized with your database.
+                  </p>
+                </div>
+                
+                <button 
+                  onClick={handleLogout}
+                  className="glass-btn-secondary" 
+                  style={{ 
+                    padding: "10px 20px", 
+                    borderRadius: "8px", 
+                    fontSize: "0.8rem", 
+                    fontWeight: 700, 
+                    border: "1px solid rgba(239, 68, 68, 0.3)", 
+                    color: "#f87171",
+                    background: "rgba(239, 68, 68, 0.05)",
+                    cursor: "pointer"
+                  }}
+                >
+                  🚪 Disconnect Session
+                </button>
+              </div>
+            )}
 
             <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
               <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
