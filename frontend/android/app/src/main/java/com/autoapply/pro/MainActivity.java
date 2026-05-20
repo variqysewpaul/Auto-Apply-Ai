@@ -1,0 +1,5 @@
+package com.autoapply.pro;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {}

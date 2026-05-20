@@ -8,15 +8,56 @@ def get_authenticated_context(p, headless=False) -> BrowserContext:
     Initializes a Playwright browser context. If a saved session exists, it uses it.
     Otherwise, it forces the user to log in manually and saves the session.
     """
+    # Standardize args to masquerade as an organic Windows Desktop browser
+    context_args = {
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "viewport": {"width": 1920, "height": 1080},
+        "locale": "en-US",
+        "device_scale_factor": 1,
+        "is_mobile": False,
+        "has_touch": False,
+        "accept_downloads": True,
+    }
+
     browser = p.chromium.launch(headless=headless)
     
     # Check if we have a saved session
     if os.path.exists(STATE_FILE):
-        print("Loading saved LinkedIn session...")
-        context = browser.new_context(storage_state=STATE_FILE)
+        print("Loading saved LinkedIn session with stealth context...")
+        context = browser.new_context(storage_state=STATE_FILE, **context_args)
     else:
-        print("No saved session found. Starting fresh...")
-        context = browser.new_context()
+        print("No saved session found. Starting fresh with stealth context...")
+        context = browser.new_context(**context_args)
+
+    # Inject initialization scripts to clear webdriver properties and spoof standard plugins/languages
+    context.add_init_script("""
+        // Hide webdriver flag
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+
+        // Spoof languages
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en']
+        });
+
+        // Spoof chrome object
+        window.chrome = {
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+        };
+
+        // Spoof standard plugins
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [
+                { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' }
+            ]
+        });
+    """)
 
     page = context.new_page()
     print("Connecting to LinkedIn...")

@@ -3,6 +3,7 @@
     "email": "sewpaulvariq@gmail.com",
     "phone": "0832061260",
     "address": "Durban North, 6 Ocean Place, 4051",
+    "city": "Durban, South Africa",
     "linkedin_url": "your_linkedin_url",
     "github_url": "github.com/variqsewpaul",
     "portfolio_url": "",
@@ -36,38 +37,69 @@
     "certifications": [
         {
             "name": "Elements of AI Certification",
-            "skills_acquired": ["AI", "Generative AI Development", "Artificial Neural Networks", "Linear Regression", "Linear Logistics Algorithms"]
+            "skills_acquired": [
+                "AI",
+                "Generative AI Development",
+                "Artificial Neural Networks",
+                "Linear Regression",
+                "Linear Logistics Algorithms"
+            ]
         },
         {
             "name": "BCG Job Simulation",
-            "skills_acquired": ["Data Extraction", "AI-powered Development", "Data Science Tools", "Generative AI Development", "Financial Analysis", "Natural Language Processing", "Python Programming"]
+            "skills_acquired": [
+                "Data Extraction",
+                "AI-powered Development",
+                "Data Science Tools",
+                "Generative AI Development",
+                "Financial Analysis",
+                "Natural Language Processing",
+                "Python Programming"
+            ]
         },
         {
             "name": "Forage Academy Data Labeling Job Simulation",
-            "skills_acquired": ["Documentation", "Feedback Delivery", "Data Privacy", "Attention to Detail", "Analytical Skills"]
+            "skills_acquired": [
+                "Documentation",
+                "Feedback Delivery",
+                "Data Privacy",
+                "Attention to Detail",
+                "Analytical Skills"
+            ]
         }
     ],
     "skills": [
-        "Python", "Node.js", "Supabase", "Tailwind CSS",
-        "Database Administration", "Data Extraction", "AI", "Generative AI", "NLP",
-        "Linear Regression", "Neural Networks", "Data Privacy", "UI/UX Design", "Web Development"
+        "Python",
+        "Node.js",
+        "Supabase",
+        "Tailwind CSS",
+        "Database Administration",
+        "Data Extraction",
+        "AI",
+        "Generative AI",
+        "NLP",
+        "Linear Regression",
+        "Neural Networks",
+        "Data Privacy",
+        "UI/UX Design",
+        "Web Development"
     ],
     "search_criteria": {
         "titles": [
-            "Data Labeler",
-            "AI Reviewer",
-            "AI Data Extraction",
-            "Web Developer",
-            "Frontend Developer",
-            "Backend Developer",
-            "Full-Stack Developer",
-            "UI/UX Designer",
-            "AI Developer"
+            "Developer"
         ],
-        "locations": ["Remote"],
+        "locations": [
+            "Remote"
+        ],
         "remote_only": true,
+        "onsite": false,
+        "hybrid": false,
+        "full_time": false,
         "part_time": true,
+        "contract": false,
         "internships": true,
-        "entry_level": true
+        "entry_level": true,
+        "associate": false,
+        "mid_senior": false
     }
 }
