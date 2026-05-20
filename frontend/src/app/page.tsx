@@ -56,6 +56,9 @@ export default function DashboardPage() {
 
   // Message alert state
   const [alertMessage, setAlertMessage] = useState<{ type: "success" | "info"; text: string } | null>(null);
+  
+  // Interactive Onboarding On/Off State
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(true);
 
   // Applications Database Logs
   const [applications, setApplications] = useState<ApplicationRecord[]>([
@@ -741,6 +744,132 @@ Instructions:
                 <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }}>{isCampaignRunning && crawlStep >= 13 ? "15" : "14"}</h3>
                 <p style={{ fontSize: "0.75rem", color: "var(--color-success)", marginTop: "6px", fontWeight: 600 }}>🔥 Daily quota on track</p>
               </div>
+            </div>
+
+            {/* Interactive Onboarding / Quick Start Guide Card */}
+            <div className="glass-panel" style={{ padding: "24px", borderRadius: "12px", border: "1px solid rgba(0, 242, 254, 0.2)", background: "rgba(10, 15, 30, 0.4)", position: "relative", overflow: "hidden", marginTop: "24px", marginBottom: "24px" }}>
+              {/* Background Glow */}
+              <div style={{ position: "absolute", top: "-50px", right: "-50px", width: "180px", height: "180px", background: "radial-gradient(circle, rgba(0, 242, 254, 0.15) 0%, transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "12px", marginBottom: "16px", position: "relative", zIndex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "1.3rem" }}>🚀</span>
+                  <div>
+                    <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, color: "#ffffff" }}>First-Time Setup & Quick Start Guide</h3>
+                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "2px" }}>Follow these 3 simple steps to automate your applications</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowOnboarding(!showOnboarding)}
+                  style={{ 
+                    background: "rgba(255,255,255,0.05)", 
+                    border: "1px solid rgba(255,255,255,0.1)", 
+                    color: "var(--color-text-primary)", 
+                    padding: "6px 12px", 
+                    borderRadius: "6px", 
+                    fontSize: "0.75rem", 
+                    fontWeight: 600, 
+                    cursor: "pointer" 
+                  }}
+                >
+                  {showOnboarding ? "Collapse Guide ⬆️" : "Expand Guide ⬇️"}
+                </button>
+              </div>
+
+              {showOnboarding && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px", position: "relative", zIndex: 1 }}>
+                  {/* Step 1 */}
+                  <div className="glass-panel" style={{ padding: "16px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "12px" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                        <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.1)", borderRadius: "4px", fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 800 }}>STEP 1</span>
+                        <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Drop Your CV & Profile Facts</h4>
+                      </div>
+                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
+                        Go to the **Resume & Facts** page. Drag & drop your PDF resume. Groq AI extracts structural details automatically, and you can edit or add missing information to fine-tune your matching facts.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => setActiveTab("profile")}
+                      className="glass-btn-secondary" 
+                      style={{ 
+                        width: "100%", 
+                        padding: "6px 12px", 
+                        borderRadius: "6px", 
+                        fontSize: "0.75rem", 
+                        fontWeight: 700, 
+                        textAlign: "center", 
+                        cursor: "pointer",
+                        border: "1px solid rgba(0, 242, 254, 0.2)",
+                        color: "var(--color-primary)",
+                        background: "rgba(0, 242, 254, 0.03)"
+                      }}
+                    >
+                      Parse Resume Now ➜
+                    </button>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="glass-panel" style={{ padding: "16px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                        <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.1)", borderRadius: "4px", fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 800 }}>STEP 2</span>
+                        <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Fire Up The Crawler Bot</h4>
+                      </div>
+                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
+                        Verify your Supabase credentials exist in the local `.env` file at the root. Start the automated Playwright engine by running this command in your local workspace terminal:
+                      </p>
+                    </div>
+                    <div style={{ 
+                      background: "rgba(0,0,0,0.5)", 
+                      borderRadius: "6px", 
+                      padding: "8px 12px", 
+                      fontFamily: "monospace", 
+                      fontSize: "0.75rem", 
+                      color: "var(--color-primary)", 
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span>python main.py</span>
+                      <span 
+                        style={{ cursor: "pointer", fontSize: "0.7rem", color: "var(--color-text-muted)" }} 
+                        onClick={() => {
+                          navigator.clipboard.writeText("python main.py");
+                          alert("Command copied!");
+                        }}
+                      >
+                        📋 Copy
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="glass-panel" style={{ padding: "16px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "12px" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                        <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.1)", borderRadius: "4px", fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 800 }}>STEP 3</span>
+                        <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Watch The Live Bot Stream</h4>
+                      </div>
+                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
+                        Click **Start Campaign** above to launch the realtime listener channel. As the local Playwright bot fills forms and evaluates details, you'll see every element focus, click, and navigate live below!
+                      </p>
+                    </div>
+                    <div style={{ 
+                      fontSize: "0.75rem", 
+                      fontWeight: 600, 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "8px", 
+                      color: isCampaignRunning ? "var(--color-success)" : "var(--color-text-muted)" 
+                    }}>
+                      <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: isCampaignRunning ? "var(--color-success)" : "var(--color-text-muted)" }} />
+                      <span>{isCampaignRunning ? "Live Synchronization Active" : "Awaiting Campaign Ignition"}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Split layout: Terminal Console + Live Visual Bot Viewer */}
