@@ -14,11 +14,18 @@ interface ApplicationRecord {
   cover_letter: string;
   job_description: string;
   match_score: number;
+  filled_inputs?: Record<string, string>;
 }
 
 export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "profile" | "logs" | "settings">("dashboard");
+  // Navigation & Mode States
+  const [supabaseUser, setSupabaseUser] = useState<any>(null);
+  const [sandboxMode, setSandboxMode] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<"welcome" | "dashboard" | "profile" | "logs" | "settings">("welcome");
+  
+  // Dashboard & Crawler States
   const [isCampaignRunning, setIsCampaignRunning] = useState<boolean>(false);
+  const [botPaused, setBotPaused] = useState<boolean>(false);
   const [consoleLogs, setConsoleLogs] = useState<string[]>([
     "🤖 System: AutoApply Pro Engine ready.",
     "🤖 System: Awaiting campaign ignition..."
@@ -26,40 +33,36 @@ export default function DashboardPage() {
   const [crawlStep, setCrawlStep] = useState<number>(0);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
-  // Connection indicator for Supabase
+  // Telemetry Sync States
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(false);
-  const [supabaseUser, setSupabaseUser] = useState<any>(null);
-
-  // Realtime Telemetry Sync State
-  const [activeElement, setActiveElement] = useState<string>("");
-  const [activeValue, setActiveValue] = useState<string>("");
   const [mockBrowserUrl, setMockBrowserUrl] = useState<string>("https://www.linkedin.com/feed/");
   const [easyApplyStep, setEasyApplyStep] = useState<number>(0); // 0: idle, 1: searching, 2: applying, 3: success
+  const [activeElement, setActiveElement] = useState<string>("");
+  const [activeValue, setActiveValue] = useState<string>("");
 
-  // Drag-and-drop state
+  // Human Intervention Custom solver states
+  const [waitingForUser, setWaitingForUser] = useState<boolean>(false);
+  const [manualQuestion, setManualQuestion] = useState<string>("");
+  const [manualAnswer, setManualAnswer] = useState<string>("");
+
+  // Drag-and-drop & parsing state
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isParsing, setIsParsing] = useState<boolean>(false);
   const [fileName, setFileName] = useState<string>("");
 
   // Form State - Candidate Profile Facts
   const [profile, setProfile] = useState({
-    fullName: "Alex Rivera",
-    email: "alex.rivera@example.com",
-    phone: "+1 (555) 019-2834",
-    address: "120 Hawthorne St",
-    city: "San Francisco, CA",
-    githubUrl: "https://github.com/alexrivera",
-    linkedinUrl: "https://linkedin.com/in/alexrivera",
-    targetKeywords: "Senior React Developer, Frontend Engineer, Software Engineer",
-    skills: "React, TypeScript, Next.js, Node.js, Playwright, Python, LLMs, CSS Grid",
+    fullName: "",
+    email: "",
+    phone: "",
+    address: "",
+    city: "",
+    githubUrl: "",
+    linkedinUrl: "",
+    targetKeywords: "",
+    skills: "",
     groqKey: ""
   });
-
-  // Message alert state
-  const [alertMessage, setAlertMessage] = useState<{ type: "success" | "info"; text: string } | null>(null);
-  
-  // Interactive Onboarding On/Off State
-  const [showOnboarding, setShowOnboarding] = useState<boolean>(true);
 
   // Supabase Auth Form States
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -67,8 +70,18 @@ export default function DashboardPage() {
   const [authPassword, setAuthPassword] = useState<string>("");
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
 
-  // Applications Database Logs
-  const [applications, setApplications] = useState<ApplicationRecord[]>([
+  // Applications Database List
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [selectedApp, setSelectedApp] = useState<ApplicationRecord | null>(null);
+
+  // Message alert state
+  const [alertMessage, setAlertMessage] = useState<{ type: "success" | "info"; text: string } | null>(null);
+  
+  // Setup Guide Checklist Step (1: API Key, 2: CV upload, 3: Launch Ready)
+  const [onboardingStep, setOnboardingStep] = useState<number>(1);
+
+  // Sandbox simulated records
+  const sandboxApplicationsList: ApplicationRecord[] = [
     {
       id: 104,
       job_title: "Senior Frontend Architect",
@@ -78,7 +91,13 @@ export default function DashboardPage() {
       applied_date: "2026-05-20 14:12:00",
       match_score: 96,
       cover_letter: "Dear Hiring Team at Stripe,\n\nI am thrilled to apply for the Senior Frontend Architect position. With over 6 years of experience engineering high-performance user interfaces at scale and deep familiarity with React, TypeScript, and modern micro-frontends, I am confident in my ability to elevate Stripe's checkout designs...",
-      job_description: "Stripe is seeking an experienced Frontend Architect to join our Core UI team. You will lead the technical design of checkout systems, scale components globally, and champion user accessibility and visual excellence..."
+      job_description: "Stripe is seeking an experienced Frontend Architect to join our Core UI team. You will lead the technical design of checkout systems, scale components globally, and champion user accessibility and visual excellence...",
+      filled_inputs: {
+        "Full Name": "Alex Rivera",
+        "React Experience": "6 Years",
+        "Micro-frontends knowledge": "Yes",
+        "Relocation Confirmation": "Willing to relocate"
+      }
     },
     {
       id: 103,
@@ -89,113 +108,96 @@ export default function DashboardPage() {
       applied_date: "2026-05-19 11:34:12",
       match_score: 94,
       cover_letter: "Dear Vercel Engineers,\n\nAs an avid builder on Vercel and Next.js, this role represents my absolute dream opportunity. I have built three production-grade web applications utilizing Next.js Server Actions, partial pre-rendering, and advanced React architectures...",
-      job_description: "Vercel is looking for a talented Frontend Developer to build out the future of cloud deployment. Ideal candidates excel with React, Next.js, Tailwind CSS, and edge computing..."
-    },
-    {
-      id: 102,
-      job_title: "Software Engineer - UI Platform",
-      company: "Figma",
-      location: "San Francisco, CA",
-      status: "Applied",
-      applied_date: "2026-05-18 09:22:45",
-      match_score: 89,
-      cover_letter: "Dear Figma Team,\n\nI am writing to express my strong interest in the UI Platform team. My background centers around core design systems and canvas-based animations, making this role a perfect fit...",
-      job_description: "Figma's UI Platform team crafts the UI frameworks, styling models, and standard components used by Figma and FigJam designers globally..."
-    },
-    {
-      id: 101,
-      job_title: "React Developer",
-      company: "Zoom",
-      location: "Remote (Global)",
-      status: "Rejected",
-      applied_date: "2026-05-16 16:45:30",
-      match_score: 95,
-      cover_letter: "Dear Zoom Recruitment,\n\nI am passionate about creating zero-latency interfaces. My experience building responsive, media-rich React dashboards makes me an excellent candidate for your Web SDK client team...",
-      job_description: "Zoom is looking for web developers focused on custom React application components and integrating real-time audio/video APIs..."
-    }
-  ]);
-
-  // Selected application details modal state
-  const [selectedApp, setSelectedApp] = useState<ApplicationRecord | null>(null);
-
-  // Load PDF.js from CDN dynamically to bypass Static Export loader issues
-  const loadPdfJs = (): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      if ((window as any).pdfjsLib) {
-        resolve((window as any).pdfjsLib);
-        return;
+      job_description: "Vercel is looking for a talented Frontend Developer to build out the future of cloud deployment. Ideal candidates excel with React, Next.js, Tailwind CSS, and edge computing...",
+      filled_inputs: {
+        "Full Name": "Alex Rivera",
+        "Next.js Projects": "3 Projects",
+        "Vercel Deployment Experience": "Advanced"
       }
-      const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
-      script.onload = () => {
-        (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
-        resolve((window as any).pdfjsLib);
-      };
-      script.onerror = () => reject(new Error("Failed to load PDF parser from CDN"));
-      document.head.appendChild(script);
-    });
-  };
-
-  const extractTextFromPdf = async (file: File): Promise<string> => {
-    const pdfjs = await loadPdfJs();
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-    let fullText = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((item: any) => item.str).join(" ");
-      fullText += pageText + "\n";
     }
-    return fullText;
-  };
+  ];
 
-  const parseCVWithGroq = async (text: string, groqKey: string) => {
-    const prompt = `You are a professional CV data extractor. Parse the following candidate resume text and return a flat JSON object matching this TypeScript interface exactly:
-interface ExtractedProfile {
-  fullName: string;
-  email: string;
-  phone: string;
-  city: string;
-  githubUrl: string;
-  linkedinUrl: string;
-  targetKeywords: string; // Comma-separated list of target titles based on experience
-  skills: string; // Comma-separated list of technical skills found
-}
+  // Dynamic Onboarding Step Tracker
+  useEffect(() => {
+    if (sandboxMode) {
+      setOnboardingStep(3); // Pre-verified for sandbox preview
+      return;
+    }
+    if (!profile.groqKey) {
+      setOnboardingStep(1);
+    } else if (!profile.fullName || !fileName) {
+      setOnboardingStep(2);
+    } else {
+      setOnboardingStep(3);
+    }
+  }, [profile.groqKey, profile.fullName, fileName, sandboxMode]);
 
-Resume Text:
-"""
-${text}
-"""
-
-Instructions:
-- Return ONLY valid, flat JSON matching the interface.
-- Do not wrap in markdown codeblocks (no \`\`\`json).
-- Be extremely accurate.
-- If a field is not found, leave it as an empty string.`;
-
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${groqKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.1,
-        response_format: { type: "json_object" }
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Groq API Error: ${response.status} ${errorText}`);
+  // Check if Supabase keys are active in client
+  useEffect(() => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (supabaseUrl && !supabaseUrl.includes("your-supabase-project-id")) {
+      setIsSupabaseConnected(true);
+      loadSupabaseProfile();
+      loadSupabaseApplications();
     }
 
-    const result = await response.json();
-    return JSON.parse(result.choices[0].message.content);
-  };
+    // Subscribe to authentication state changes dynamically
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setSupabaseUser(session.user);
+        setSandboxMode(false);
+        setActiveTab("dashboard");
+        loadSupabaseProfile();
+        loadSupabaseApplications();
+      } else {
+        setSupabaseUser(null);
+        setApplications([]);
+        if (!sandboxMode) {
+          setActiveTab("welcome");
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Sync state between sandbox / database
+  useEffect(() => {
+    if (sandboxMode) {
+      setApplications(sandboxApplicationsList);
+      setProfile({
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.com",
+        phone: "+1 (555) 019-2834",
+        address: "120 Hawthorne St",
+        city: "San Francisco, CA",
+        githubUrl: "https://github.com/alexrivera",
+        linkedinUrl: "https://linkedin.com/in/alexrivera",
+        targetKeywords: "Senior React Developer, Frontend Engineer, Software Engineer",
+        skills: "React, TypeScript, Next.js, Node.js, Playwright, Python, LLMs, CSS Grid",
+        groqKey: "gsk_SimulatedDemoKey1029384756"
+      });
+      setFileName("alex_rivera_resume.pdf");
+    } else if (!supabaseUser) {
+      // Clear profile when exit sandbox and no user
+      setProfile({
+        fullName: "",
+        email: "",
+        phone: "",
+        address: "",
+        city: "",
+        githubUrl: "",
+        linkedinUrl: "",
+        targetKeywords: "",
+        skills: "",
+        groqKey: ""
+      });
+      setFileName("");
+      setApplications([]);
+    }
+  }, [sandboxMode]);
 
   const loadSupabaseApplications = async () => {
     try {
@@ -216,36 +218,13 @@ Instructions:
           match_score: 95
         }));
         setApplications(formatted);
+      } else {
+        setApplications([]);
       }
     } catch (e) {
       console.error("Could not fetch applications from Supabase:", e);
     }
   };
-
-  // Check if Supabase keys are active in client
-  useEffect(() => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl && !supabaseUrl.includes("your-supabase-project-id")) {
-      setIsSupabaseConnected(true);
-      loadSupabaseProfile();
-      loadSupabaseApplications();
-    }
-
-    // Subscribe to authentication state changes dynamically
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setSupabaseUser(session.user);
-        loadSupabaseProfile();
-        loadSupabaseApplications();
-      } else {
-        setSupabaseUser(null);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
 
   const loadSupabaseProfile = async () => {
     try {
@@ -260,6 +239,7 @@ Instructions:
         if (data) {
           setProfile({
             fullName: data.full_name || "",
+            email: user.email || "",
             phone: data.phone || "",
             address: data.address || "",
             city: data.city || "",
@@ -269,6 +249,9 @@ Instructions:
             skills: data.skills?.join(", ") || "",
             groqKey: data.encrypted_groq_key || ""
           } as any);
+          if (data.full_name) {
+            setFileName("CV_Facts_Loaded_from_Database.pdf");
+          }
         }
       }
     } catch (e) {
@@ -278,24 +261,16 @@ Instructions:
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
-      setSupabaseUser(null);
-      
-      // Reset profile state to premium defaults
-      setProfile({
-        fullName: "Alex Rivera",
-        email: "alex.rivera@example.com",
-        phone: "+1 (555) 019-2834",
-        address: "120 Hawthorne St",
-        city: "San Francisco, CA",
-        githubUrl: "https://github.com/alexrivera",
-        linkedinUrl: "https://linkedin.com/in/alexrivera",
-        targetKeywords: "Senior React Developer, Frontend Engineer, Software Engineer",
-        skills: "React, TypeScript, Next.js, Node.js, Playwright, Python, LLMs, CSS Grid",
-        groqKey: ""
-      });
-      
-      setAlertMessage({ type: "info", text: "Logged out of Supabase successfully." });
+      if (sandboxMode) {
+        setSandboxMode(false);
+        setActiveTab("welcome");
+        setAlertMessage({ type: "info", text: "Sandbox simulation terminated." });
+      } else {
+        await supabase.auth.signOut();
+        setSupabaseUser(null);
+        setActiveTab("welcome");
+        setAlertMessage({ type: "info", text: "Logged out of Supabase successfully." });
+      }
       setTimeout(() => setAlertMessage(null), 3000);
     } catch (error: any) {
       console.error("Logout failed:", error);
@@ -334,27 +309,295 @@ Instructions:
     }
   };
 
+  // Load PDF.js dynamically
+  const loadPdfJs = (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).pdfjsLib) {
+        resolve((window as any).pdfjsLib);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js";
+      script.onload = () => {
+        (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+        resolve((window as any).pdfjsLib);
+      };
+      script.onerror = () => reject(new Error("Failed to load PDF parser from CDN"));
+      document.head.appendChild(script);
+    });
+  };
+
+  const extractTextFromPdf = async (file: File): Promise<string> => {
+    const pdfjs = await loadPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    let fullText = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(" ");
+      fullText += pageText + "\n";
+    }
+    return fullText;
+  };
+
+  const parseCVWithGroq = async (text: string, groqKey: string) => {
+    const prompt = `You are a professional CV data extractor. Parse the resume and return a flat JSON matching this TypeScript interface exactly:
+interface ExtractedProfile {
+  fullName: string;
+  email: string;
+  phone: string;
+  city: string;
+  githubUrl: string;
+  linkedinUrl: string;
+  targetKeywords: string; // Comma-separated list of target titles based on experience
+  skills: string; // Comma-separated list of technical skills found
+}
+Text: ${text}`;
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${groqKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        response_format: { type: "json_object" }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Groq API Error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return JSON.parse(result.choices[0].message.content);
+  };
+
+  const handleCVUpload = async (file: File) => {
+    setIsParsing(true);
+    setFileName(file.name);
+    try {
+      let extractedText = "";
+      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+        extractedText = await extractTextFromPdf(file);
+      } else {
+        extractedText = await file.text();
+      }
+
+      if (!extractedText || extractedText.trim().length < 50) {
+        throw new Error("Could not extract sufficient text structure from this file.");
+      }
+
+      const keyToUse = profile.groqKey;
+      if (keyToUse && keyToUse.startsWith("gsk_")) {
+        setAlertMessage({ type: "info", text: "Connecting to Groq AI..." });
+        const parsed = await parseCVWithGroq(extractedText, keyToUse);
+        setProfile({
+          fullName: parsed.fullName || parsed.full_name || "Alex Rivera",
+          email: parsed.email || profile.email || "alex@example.com",
+          phone: parsed.phone || "",
+          address: parsed.address || "",
+          city: parsed.city || "",
+          githubUrl: parsed.githubUrl || parsed.github_url || "",
+          linkedinUrl: parsed.linkedinUrl || parsed.linkedin_url || "",
+          targetKeywords: parsed.targetKeywords || parsed.target_keywords || "Software Engineer",
+          skills: parsed.skills || "",
+          groqKey: profile.groqKey
+        });
+        setAlertMessage({ type: "success", text: "AI successfully parsed CV and filled details!" });
+      } else {
+        // Fallback offline heuristics
+        const emailMatch = extractedText.match(/[\w.-]+@[\w.-]+\.\w+/)?.[0] || "";
+        const phoneMatch = extractedText.match(/\+?\d[\d -]{8,15}\d/)?.[0] || "";
+        
+        setProfile({
+          fullName: "CV Candidate",
+          email: emailMatch || profile.email || "candidate@example.com",
+          phone: phoneMatch || "",
+          address: "",
+          city: "",
+          githubUrl: "",
+          linkedinUrl: "",
+          targetKeywords: "Software Developer",
+          skills: "React, TypeScript, Next.js, Node.js",
+          groqKey: profile.groqKey
+        });
+        setAlertMessage({ 
+          type: "info", 
+          text: "Parsed using offline heuristics! Enter a Groq Key for advanced AI extraction." 
+        });
+      }
+    } catch (err: any) {
+      console.error("CV Parsing Error:", err);
+      setAlertMessage({ type: "info", text: `Extraction failed: ${err.message}` });
+    } finally {
+      setIsParsing(false);
+      setTimeout(() => setAlertMessage(null), 5000);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSupabaseConnected && supabaseUser) {
+      try {
+        const { error } = await supabase
+          .from("profiles")
+          .upsert({
+            id: supabaseUser.id,
+            full_name: profile.fullName,
+            phone: profile.phone,
+            address: profile.address,
+            city: profile.city,
+            github_url: profile.githubUrl,
+            linkedin_url: profile.linkedinUrl,
+            search_criteria: {
+              titles: profile.targetKeywords.split(",").map(s => s.trim()),
+              locations: [profile.city]
+            },
+            skills: profile.skills.split(",").map(s => s.trim()),
+            encrypted_groq_key: profile.groqKey
+          });
+        if (error) throw error;
+      } catch (e: any) {
+        setAlertMessage({ type: "info", text: `Save failed: ${e.message}` });
+        return;
+      }
+    }
+    setAlertMessage({ type: "success", text: "Facts saved successfully!" });
+    setTimeout(() => setAlertMessage(null), 4000);
+  };
+
+  // Clipboard Paste Helper for Groq Key
+  const handlePasteKey = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.startsWith("gsk_")) {
+        setProfile({ ...profile, groqKey: text });
+        setAlertMessage({ type: "success", text: "Successfully pasted Groq Key!" });
+      } else {
+        setAlertMessage({ type: "info", text: "No valid API key starting with 'gsk_' found on clipboard." });
+      }
+    } catch (e) {
+      setAlertMessage({ type: "info", text: "Could not read clipboard. Please paste manually." });
+    }
+    setTimeout(() => setAlertMessage(null), 3000);
+  };
+
   // Auto-scroll terminal logs
   useEffect(() => {
     consoleEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [consoleLogs]);
 
-  // Handle live telemetry tracking or fall back to simulation loop
+  // Campaign Simulation Loop with interactive pausing/solving
   useEffect(() => {
     if (!isCampaignRunning) {
       setActiveElement("");
       setActiveValue("");
       setEasyApplyStep(0);
-      setConsoleLogs(prev => [...prev, "🛑 [System] Campaign stopped. Engine in idle."]);
+      setWaitingForUser(false);
       return;
     }
 
-    if (isSupabaseConnected) {
+    if (botPaused) {
+      setConsoleLogs(prev => [...prev, "⏸️ [Stealth] Bot execution paused dynamically. Holding browser thread."]);
+      return;
+    }
+
+    if (sandboxMode) {
+      const simLogs = [
+        "🛡️ [Stealth] Masking webdriver signatures. Overriding navigator.webdriver -> undefined.",
+        "🌐 [Network] Initializing residential proxies. IP located in San Francisco, CA.",
+        "🔑 [Auth] Checking active session. Session token loaded successfully.",
+        "🔍 [Search] Crawling active listings for: 'Senior React Developer'...",
+        "📄 [Found] Discovered 12 jobs in target locations.",
+        "🔬 [Evaluate] Analyzing 'Senior Frontend Architect' at Stripe...",
+        "🧠 [AI Evaluate] Resume matching score: 96%. FIT DETERMINED.",
+        "📝 [Cover Letter] Cover letter generated successfully.",
+        "⚡ [Easy Apply] Initiating Easy Apply application modal.",
+        "✏️ [AI Solver] Auto-filling Name, Email, Address from Profile...",
+        "⚠️ [PAUSE REQUIRED] Verification Alert: Complex relocation question encountered!",
+        "✏️ [AI Solver] Solving relocation question...",
+        "🚀 [Apply] Clicking 'Submit Application'...",
+        "💾 [Log] stripe application logged securely to database.",
+        "🎉 [Success] Application sent! Bot cycle finished."
+      ];
+
+      // Reset crawl step when loop resets
+      let currentStepIndex = crawlStep;
+      
+      const intervalId = setInterval(() => {
+        if (botPaused || waitingForUser) return;
+
+        if (currentStepIndex < simLogs.length) {
+          const currentLog = simLogs[currentStepIndex];
+          setConsoleLogs(prev => [...prev, currentLog]);
+          setCrawlStep(currentStepIndex + 1);
+
+          // URL Address updates
+          if (currentStepIndex >= 4) {
+            setMockBrowserUrl("https://www.linkedin.com/jobs/view/stripe-frontend-architect");
+          } else {
+            setMockBrowserUrl("https://www.linkedin.com/feed/");
+          }
+
+          // Browser step animations
+          if (currentStepIndex >= 8) {
+            setEasyApplyStep(2); // Typing forms
+          } else if (currentStepIndex >= 6) {
+            setEasyApplyStep(1); // Evaluation
+          } else {
+            setEasyApplyStep(0);
+          }
+
+          // Pause point at relocation question (step 10)
+          if (currentStepIndex === 10) {
+            setWaitingForUser(true);
+            setManualQuestion("Are you willing to relocate to San Francisco, CA?");
+            setConsoleLogs(prev => [...prev, "⚠️ [Human Intervention Required] Playwright paused. Waiting for relocation input."]);
+          }
+
+          currentStepIndex++;
+        } else {
+          // Finished simulated application - insert Stripe to logs dynamically
+          const exist = applications.find(a => a.company === "Stripe");
+          if (!exist) {
+            const stripeApp: ApplicationRecord = {
+              id: Date.now(),
+              job_title: "Senior Frontend Architect",
+              company: "Stripe",
+              location: "San Francisco, CA (Hybrid)",
+              status: "Applied",
+              applied_date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+              match_score: 96,
+              cover_letter: "Dear Stripe Team,\n\nI am thrilled to apply for the Senior Frontend Architect position. With over 6 years of experience engineering high-performance user interfaces at scale and deep familiarity with React, TypeScript, and modern micro-frontends, I am confident in my ability to elevate Stripe's checkout designs...",
+              job_description: "Stripe is seeking an experienced Frontend Architect to join our Core UI team. You will lead the technical design of checkout systems, scale components globally, and champion user accessibility and visual excellence...",
+              filled_inputs: {
+                "Full Name": "Alex Rivera",
+                "React Experience": "6 Years",
+                "Micro-frontends knowledge": "Yes",
+                "Relocation Confirmation": "Willing to relocate"
+              }
+            };
+            setApplications(prev => [stripeApp, ...prev]);
+          }
+          setIsCampaignRunning(false);
+          setCrawlStep(0);
+          setEasyApplyStep(3); // Success Screen
+        }
+      }, 2500);
+
+      return () => clearInterval(intervalId);
+    } else if (isSupabaseConnected && supabaseUser) {
+      // Realtime listener
       setConsoleLogs([
         "🚀 [System] Live Supabase Sync Active...",
         "🔌 [Bridge] Listening for Playwright telemetry events in real-time."
       ]);
-      setEasyApplyStep(1); // Set searching mode
+      setEasyApplyStep(1);
 
       const sub = supabase
         .channel("crawler-telemetry")
@@ -391,6 +634,10 @@ Instructions:
             } else if (type === "mismatch") {
               setConsoleLogs(prev => [...prev, `🛑 [Skipped] Fit failure: ${data.reason}`]);
               setEasyApplyStep(0);
+            } else if (type === "waiting_for_user") {
+              setWaitingForUser(true);
+              setManualQuestion(data.question || "Verification details required.");
+              setConsoleLogs(prev => [...prev, `⚠️ [Human Control] Paused at verification check: "${data.question}"`]);
             } else if (type === "log") {
               setConsoleLogs(prev => [...prev, `🤖 Playwright: ${data.message}`]);
             }
@@ -401,193 +648,43 @@ Instructions:
       return () => {
         supabase.removeChannel(sub);
       };
-    } else {
-      // Simulation mode
-      const simLogs = [
-        "🛡️ [Stealth] Masking webdriver signatures. Overriding navigator.webdriver -> undefined.",
-        "🌐 [Network] Initializing residential proxies. IP located in San Francisco, CA.",
-        "🔑 [Auth] Checking active session. Session token loaded successfully.",
-        "🔍 [Search] Crawling active listings for: 'Senior React Developer'...",
-        "📄 [Found] Discovered 12 jobs in target locations.",
-        "🔬 [Evaluate] Analyzing 'Senior Frontend Architect' at Stripe...",
-        "🧠 [AI Evaluate] Resume matching score: 96%. FIT DETERMINED.",
-        "📝 [Cover Letter] tailored cover letter drafted utilizing Stripe core themes.",
-        "⚡ [Easy Apply] Initiating application wizard modal.",
-        "✏️ [AI Solver] Auto-filling Name, Email, Address from Profile...",
-        "❓ [AI Solver] Custom question: 'How many years with React?' -> '6'",
-        "❓ [AI Solver] Custom question: 'Have you built micro-frontends?' -> 'Yes'",
-        "🚀 [Apply] Easy Apply submitted successfully!",
-        "💾 [Log] stripe application logged securely to history.",
-        "🔬 [Evaluate] Analyzing next job posting...",
-        "🛑 [System] Campaign cycle pause."
-      ];
-
-      let logIndex = 0;
-      setConsoleLogs([
-        "🚀 [System] Initializing search campaign (Simulation Mode)...",
-        "🔌 [Bridge] Connected to simulation orchestrator."
-      ]);
-      setCrawlStep(0);
-
-      const intervalId = setInterval(() => {
-        if (logIndex < simLogs.length) {
-          setConsoleLogs(prev => [...prev, simLogs[logIndex]]);
-          setCrawlStep(logIndex + 1);
-          logIndex++;
-        } else {
-          logIndex = 0;
-          setCrawlStep(0);
-        }
-      }, 3000);
-
-      return () => clearInterval(intervalId);
     }
-  }, [isCampaignRunning, isSupabaseConnected]);
+  }, [isCampaignRunning, botPaused, waitingForUser, sandboxMode]);
 
-  // Handle drag-and-drop file upload
-  const handleDragOver = (e: React.DragEvent) => {
+  // Submit Answer to Bot to continue
+  const handleSolveQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsDragging(true);
-  };
+    if (!manualAnswer) return;
 
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
+    setConsoleLogs(prev => [...prev, `✅ [Human Feedback] Submitted Answer: "${manualAnswer}"`]);
+    setWaitingForUser(false);
+    setManualQuestion("");
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      if (file.type === "application/pdf" || file.name.endsWith(".pdf") || file.name.endsWith(".docx")) {
-        handleCVUpload(file);
-      } else {
-        setAlertMessage({ type: "info", text: "Unsupported format. Please upload a PDF or DOCX file." });
-        setTimeout(() => setAlertMessage(null), 4000);
-      }
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      handleCVUpload(files[0]);
-    }
-  };
-
-  // Perform client-side resume extraction using PDF.js and Groq AI
-  const handleCVUpload = async (file: File) => {
-    setIsParsing(true);
-    setFileName(file.name);
-    try {
-      let extractedText = "";
-      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-        extractedText = await extractTextFromPdf(file);
-      } else {
-        extractedText = await file.text();
-      }
-
-      if (!extractedText || extractedText.trim().length < 50) {
-        throw new Error("Could not extract sufficient text structure from this file.");
-      }
-
-      // Check if we have a valid Groq API key entered in the form
-      const keyToUse = profile.groqKey;
-      if (keyToUse && keyToUse.startsWith("gsk_")) {
-        setAlertMessage({ type: "info", text: "Reading file and connecting to Groq AI..." });
-        const parsed = await parseCVWithGroq(extractedText, keyToUse);
-        setProfile({
-          fullName: parsed.fullName || parsed.full_name || "Alex Rivera",
-          email: parsed.email || "alex.rivera@example.com",
-          phone: parsed.phone || "+1 (555) 019-2834",
-          address: parsed.address || "120 Hawthorne St",
-          city: parsed.city || "San Francisco, CA",
-          githubUrl: parsed.githubUrl || parsed.github_url || "https://github.com/alexrivera",
-          linkedinUrl: parsed.linkedinUrl || parsed.linkedin_url || "https://linkedin.com/in/alexrivera",
-          targetKeywords: parsed.targetKeywords || parsed.target_keywords || "Senior React Developer, Frontend Engineer",
-          skills: parsed.skills || "React, TypeScript, Next.js, Node.js",
-          groqKey: profile.groqKey
-        });
-        setAlertMessage({ type: "success", text: "AI successfully parsed CV and filled details!" });
-      } else {
-        // Advanced offline heuristics extractor fallback
-        const emailMatch = extractedText.match(/[\w.-]+@[\w.-]+\.\w+/)?.[0] || "";
-        const phoneMatch = extractedText.match(/\+?\d[\d -]{8,15}\d/)?.[0] || "";
-        const githubMatch = extractedText.match(/(github\.com\/[a-zA-Z0-9_-]+)/)?.[0] || "";
-        const linkedinMatch = extractedText.match(/(linkedin\.com\/in\/[a-zA-Z0-9_-]+)/)?.[0] || "";
-        
-        const cleanLines = extractedText.split("\n").map(l => l.trim()).filter(l => l.length > 2);
-        const nameGuess = cleanLines[0] || "Alex Rivera";
-
-        setProfile({
-          fullName: nameGuess.length < 40 ? nameGuess : "Alex Rivera",
-          email: emailMatch || "alex.rivera@example.com",
-          phone: phoneMatch || "+1 (555) 019-2834",
-          address: "120 Hawthorne St",
-          city: "San Francisco, CA",
-          githubUrl: githubMatch ? `https://${githubMatch}` : "https://github.com/alexrivera",
-          linkedinUrl: linkedinMatch ? `https://${linkedinMatch}` : "https://linkedin.com/in/alexrivera",
-          targetKeywords: "Senior React Developer, Frontend Engineer",
-          skills: "React, TypeScript, Next.js, Node.js, CSS Grid, REST APIs, Git",
-          groqKey: profile.groqKey
-        });
-        setAlertMessage({ 
-          type: "info", 
-          text: "Parsed using offline heuristics! Enter a Groq Key for advanced AI-driven extraction." 
-        });
-      }
-    } catch (err: any) {
-      console.error("CV Parsing Error:", err);
-      setAlertMessage({ type: "info", text: `Extraction failed: ${err.message}` });
-    } finally {
-      setIsParsing(false);
-      setTimeout(() => setAlertMessage(null), 5000);
-    }
-  };
-
-
-  // Handle profile form save
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (isSupabaseConnected) {
+    if (sandboxMode) {
+      setConsoleLogs(prev => [...prev, "▶️ [Sandbox] Relocation answer injected. Resuming Playwright browser..."]);
+      // Fast forward after pause point
+      setCrawlStep(12);
+    } else if (isSupabaseConnected && supabaseUser) {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { error } = await supabase
-            .from("profiles")
-            .upsert({
-              id: user.id,
-              full_name: profile.fullName,
-              phone: profile.phone,
-              address: profile.address,
-              city: profile.city,
-              github_url: profile.githubUrl,
-              linkedin_url: profile.linkedinUrl,
-              search_criteria: {
-                titles: profile.targetKeywords.split(",").map(s => s.trim()),
-                locations: [profile.city]
-              },
-              skills: profile.skills.split(",").map(s => s.trim()),
-              encrypted_groq_key: profile.groqKey
-            });
-          if (error) throw error;
-        }
-      } catch (e: any) {
-        setAlertMessage({ type: "info", text: `Supabase Mode: ${e.message}` });
-        return;
+        // Send solving payload to Supabase bot events
+        const { error } = await supabase
+          .from("bot_events")
+          .insert({
+            user_id: supabaseUser.id,
+            event_type: "user_input_solved",
+            payload: {
+              question: manualQuestion,
+              answer: manualAnswer
+            }
+          });
+        if (error) throw error;
+        setAlertMessage({ type: "success", text: "Answer piped to local crawler!" });
+        setTimeout(() => setAlertMessage(null), 3000);
+      } catch (err) {
+        console.error("Failed to post user answer:", err);
       }
     }
-
-    setAlertMessage({ type: "success", text: "Candidate profile facts successfully saved!" });
-    setTimeout(() => setAlertMessage(null), 4000);
-  };
-
-  // Toggle campaign active state
-  const toggleCampaign = () => {
-    setIsCampaignRunning(!isCampaignRunning);
+    setManualAnswer("");
   };
 
   return (
@@ -606,7 +703,18 @@ Instructions:
         }}
       >
         <div>
-          <h1 style={{ fontFamily: "var(--font-family-title)", fontWeight: 800, fontSize: "1.5rem", display: "flex", alignItems: "center", gap: "8px" }}>
+          <h1 
+            onClick={() => setActiveTab("welcome")}
+            style={{ 
+              fontFamily: "var(--font-family-title)", 
+              fontWeight: 800, 
+              fontSize: "1.5rem", 
+              display: "flex", 
+              alignItems: "center", 
+              gap: "8px",
+              cursor: "pointer"
+            }}
+          >
             <span style={{ fontSize: "1.6rem" }}>💼</span> 
             <span className="gradient-text">AutoApply</span> Pro
           </h1>
@@ -617,19 +725,19 @@ Instructions:
 
         <nav style={{ display: "flex", flexDirection: "column", gap: "8px", flexGrow: 1 }}>
           <button 
-            id="nav-btn-dashboard"
-            onClick={() => setActiveTab("dashboard")} 
-            className={`glass-panel ${activeTab === "dashboard" ? "glass-panel-hover" : ""}`}
+            id="nav-btn-welcome"
+            onClick={() => setActiveTab("welcome")} 
+            className={`glass-panel ${activeTab === "welcome" ? "glass-panel-hover" : ""}`}
             style={{ 
               display: "flex", 
               alignItems: "center", 
               gap: "12px", 
               width: "100%", 
               padding: "14px 18px", 
-              background: activeTab === "dashboard" ? "rgba(0, 242, 254, 0.08)" : "transparent", 
+              background: activeTab === "welcome" ? "rgba(0, 242, 254, 0.08)" : "transparent", 
               border: "none",
-              borderColor: activeTab === "dashboard" ? "var(--color-primary)" : "transparent",
-              color: activeTab === "dashboard" ? "var(--color-text-primary)" : "var(--color-text-secondary)",
+              borderColor: activeTab === "welcome" ? "var(--color-primary)" : "transparent",
+              color: activeTab === "welcome" ? "var(--color-text-primary)" : "var(--color-text-secondary)",
               textAlign: "left",
               cursor: "pointer",
               fontWeight: 600,
@@ -637,56 +745,84 @@ Instructions:
               borderRadius: "8px"
             }}
           >
-            <span style={{ fontSize: "1.1rem" }}>📊</span> Dashboard
+            <span style={{ fontSize: "1.1rem" }}>✨</span> Onboarding Guide
           </button>
 
-          <button 
-            id="nav-btn-profile"
-            onClick={() => setActiveTab("profile")} 
-            className={`glass-panel ${activeTab === "profile" ? "glass-panel-hover" : ""}`}
-            style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "12px", 
-              width: "100%", 
-              padding: "14px 18px", 
-              background: activeTab === "profile" ? "rgba(0, 242, 254, 0.08)" : "transparent", 
-              border: "none",
-              borderColor: activeTab === "profile" ? "var(--color-primary)" : "transparent",
-              color: activeTab === "profile" ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-              textAlign: "left",
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: "0.9rem",
-              borderRadius: "8px"
-            }}
-          >
-            <span style={{ fontSize: "1.1rem" }}>👤</span> Resume & Facts
-          </button>
+          {(supabaseUser || sandboxMode) && (
+            <>
+              <button 
+                id="nav-btn-dashboard"
+                onClick={() => setActiveTab("dashboard")} 
+                className={`glass-panel ${activeTab === "dashboard" ? "glass-panel-hover" : ""}`}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "12px", 
+                  width: "100%", 
+                  padding: "14px 18px", 
+                  background: activeTab === "dashboard" ? "rgba(0, 242, 254, 0.08)" : "transparent", 
+                  border: "none",
+                  borderColor: activeTab === "dashboard" ? "var(--color-primary)" : "transparent",
+                  color: activeTab === "dashboard" ? "var(--color-text-primary)" : "var(--color-text-secondary)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                  borderRadius: "8px"
+                }}
+              >
+                <span style={{ fontSize: "1.1rem" }}>🚀</span> Launch Pad
+              </button>
 
-          <button 
-            id="nav-btn-logs"
-            onClick={() => setActiveTab("logs")} 
-            className={`glass-panel ${activeTab === "logs" ? "glass-panel-hover" : ""}`}
-            style={{ 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "12px", 
-              width: "100%", 
-              padding: "14px 18px", 
-              background: activeTab === "logs" ? "rgba(0, 242, 254, 0.08)" : "transparent", 
-              border: "none",
-              borderColor: activeTab === "logs" ? "var(--color-primary)" : "transparent",
-              color: activeTab === "logs" ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-              textAlign: "left",
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: "0.9rem",
-              borderRadius: "8px"
-            }}
-          >
-            <span style={{ fontSize: "1.1rem" }}>📋</span> Search Logs
-          </button>
+              <button 
+                id="nav-btn-profile"
+                onClick={() => setActiveTab("profile")} 
+                className={`glass-panel ${activeTab === "profile" ? "glass-panel-hover" : ""}`}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "12px", 
+                  width: "100%", 
+                  padding: "14px 18px", 
+                  background: activeTab === "profile" ? "rgba(0, 242, 254, 0.08)" : "transparent", 
+                  border: "none",
+                  borderColor: activeTab === "profile" ? "var(--color-primary)" : "transparent",
+                  color: activeTab === "profile" ? "var(--color-text-primary)" : "var(--color-text-secondary)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                  borderRadius: "8px"
+                }}
+              >
+                <span style={{ fontSize: "1.1rem" }}>👤</span> Resume & Facts
+              </button>
+
+              <button 
+                id="nav-btn-logs"
+                onClick={() => setActiveTab("logs")} 
+                className={`glass-panel ${activeTab === "logs" ? "glass-panel-hover" : ""}`}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "12px", 
+                  width: "100%", 
+                  padding: "14px 18px", 
+                  background: activeTab === "logs" ? "rgba(0, 242, 254, 0.08)" : "transparent", 
+                  border: "none",
+                  borderColor: activeTab === "logs" ? "var(--color-primary)" : "transparent",
+                  color: activeTab === "logs" ? "var(--color-text-primary)" : "var(--color-text-secondary)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                  borderRadius: "8px"
+                }}
+              >
+                <span style={{ fontSize: "1.1rem" }}>📋</span> History Logs
+              </button>
+            </>
+          )}
 
           <button 
             id="nav-btn-settings"
@@ -716,20 +852,20 @@ Instructions:
         {/* User context footer */}
         <div className="glass-panel" style={{ padding: "16px", borderRadius: "10px", display: "flex", gap: "12px", alignItems: "center", position: "relative", width: "100%", overflow: "hidden" }}>
           <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg, var(--color-primary), var(--color-secondary))", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "0.85rem", flexShrink: 0 }}>
-            {supabaseUser ? (profile.fullName?.slice(0, 2).toUpperCase() || supabaseUser.email?.slice(0, 2).toUpperCase() || "U") : "AR"}
+            {supabaseUser ? (profile.fullName?.slice(0, 2).toUpperCase() || supabaseUser.email?.slice(0, 2).toUpperCase() || "U") : (sandboxMode ? "AR" : "G")}
           </div>
           <div style={{ minWidth: 0, flexGrow: 1 }}>
             <p style={{ fontSize: "0.85rem", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {supabaseUser ? (profile.fullName || supabaseUser.email) : "Alex Rivera"}
+              {supabaseUser ? (profile.fullName || supabaseUser.email) : (sandboxMode ? "Alex Rivera (Demo)" : "Guest Session")}
             </p>
             <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {supabaseUser ? "Active Session" : "Premium Member"}
+              {supabaseUser ? "Sync Active" : (sandboxMode ? "Sandbox Simulation" : "Offline Sandbox")}
             </p>
           </div>
-          {supabaseUser ? (
+          {(supabaseUser || sandboxMode) ? (
             <button 
               onClick={handleLogout}
-              title="Log Out of Supabase"
+              title="Terminate session"
               style={{
                 background: "rgba(239, 68, 68, 0.15)",
                 border: "1px solid rgba(239, 68, 68, 0.3)",
@@ -746,7 +882,7 @@ Instructions:
                 flexShrink: 0
               }}
             >
-              🚪 Logout
+              🚪 Exit
             </button>
           ) : (
             <button 
@@ -805,226 +941,267 @@ Instructions:
           </div>
         )}
 
-        {/* ── TAB 1: DASHBOARD VIEW ── */}
-        {activeTab === "dashboard" && (
-          <>
-            {/* Header Area */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        {/* ── TAB 1: WELCOME LANDING PAGE (GUIDED INTRODUCTION) ── */}
+        {activeTab === "welcome" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "40px", maxWidth: "900px", margin: "0 auto" }}>
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontSize: "0.95rem", color: "var(--color-primary)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em" }}>Introducing the Future of Job Hunting</p>
+              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "3.2rem", fontWeight: 800, marginTop: "12px", lineHeight: "1.1" }}>
+                Automate Your Job Applications with <span className="gradient-text">Autonomous AI</span>
+              </h2>
+              <p style={{ color: "var(--color-text-secondary)", fontSize: "1.1rem", marginTop: "16px", maxWidth: "680px", margin: "16px auto 0" }}>
+                AutoApply Pro logs onto LinkedIn via residential proxies, parses complex questions with custom-tailored Groq LLM intelligence, and applies to hundreds of jobs with zero visual footprints.
+              </p>
+            </div>
+
+            {/* Core Value Proposition Banners */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "24px", marginTop: "16px" }}>
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <span style={{ fontSize: "2rem" }}>🧠</span>
+                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginTop: "12px" }}>Bring Your Own Key (BYOK)</h3>
+                <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "8px", lineHeight: "1.5" }}>
+                  Save your private Groq API key directly to your database. Enjoy completely free AI calls with unlimited daily operations, saving hundreds in centralized host fees.
+                </p>
+              </div>
+
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <span style={{ fontSize: "2rem" }}>📄</span>
+                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginTop: "12px" }}>One-Click Resume Parser</h3>
+                <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "8px", lineHeight: "1.5" }}>
+                  Drag & drop your PDF resume. Our client-side analyzer extracts email, contact facts, and core tech arrays in under 3 seconds to map them to standard application formats.
+                </p>
+              </div>
+
+              <div className="glass-panel" style={{ padding: "24px" }}>
+                <span style={{ fontSize: "2rem" }}>👁️</span>
+                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginTop: "12px" }}>Human Bot Control Viewer</h3>
+                <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "8px", lineHeight: "1.5" }}>
+                  Watch a real-time live capture stream of the Playwright bot navigating LinkedIn. Pause, resume, or answer complex manual verification questions directly from your interface.
+                </p>
+              </div>
+            </div>
+
+            {/* Guided Path Selector / CTAs */}
+            <div className="glass-panel" style={{ padding: "32px", border: "1px solid rgba(0, 242, 254, 0.2)", background: "rgba(10, 15, 30, 0.3)", display: "flex", flexDirection: "column", gap: "24px", alignItems: "center", textAlign: "center" }}>
               <div>
-                <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Main Panel</p>
-                <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>Welcome Back, <span className="gradient-text">Alex</span></h2>
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.3rem", fontWeight: 800 }}>Ready to get started? Select a route below</h3>
+                <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: "4px" }}>No credit card required. Experience live automation instantly.</p>
               </div>
 
-              {/* Campaign Control Button */}
-              <button 
-                id="btn-toggle-campaign"
-                onClick={toggleCampaign}
-                className="glass-panel"
-                style={{ 
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "12px 24px",
-                  borderRadius: "10px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  border: "1px solid",
-                  background: isCampaignRunning ? "rgba(243, 85, 136, 0.15)" : "rgba(0, 242, 254, 0.15)",
-                  borderColor: isCampaignRunning ? "var(--color-accent)" : "var(--color-primary)",
-                  color: isCampaignRunning ? "#ff839d" : "var(--color-primary)",
-                  transition: "all 0.3s ease"
-                }}
-              >
-                <span 
-                  className={isCampaignRunning ? "animate-pulse-soft" : ""} 
-                  style={{ 
-                    display: "inline-block", 
-                    width: "8px", 
-                    height: "8px", 
-                    borderRadius: "50%", 
-                    background: isCampaignRunning ? "var(--color-accent)" : "var(--color-primary)" 
-                  }}
-                />
-                {isCampaignRunning ? "STOP CAMPAIGN" : "START CAMPAIGN"}
-              </button>
-            </div>
-
-            {/* Metrics cards grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "24px" }}>
-              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
-                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Applications</p>
-                <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }} className="gradient-text">158</h3>
-                <p style={{ fontSize: "0.75rem", color: "var(--color-success)", marginTop: "6px", fontWeight: 600 }}>🟢 Active crawler logs active</p>
-              </div>
-
-              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
-                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Companies Crawled</p>
-                <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }}>24</h3>
-                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "6px" }}>LinkedIn Easy Apply matches</p>
-              </div>
-
-              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
-                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>AI Match Success Rate</p>
-                <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }} className="gradient-text-pink">98.6%</h3>
-                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "6px" }}>Based on 142 custom questions</p>
-              </div>
-
-              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
-                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Applications Today</p>
-                <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }}>{isCampaignRunning && crawlStep >= 13 ? "15" : "14"}</h3>
-                <p style={{ fontSize: "0.75rem", color: "var(--color-success)", marginTop: "6px", fontWeight: 600 }}>🔥 Daily quota on track</p>
-              </div>
-            </div>
-
-            {/* Interactive Onboarding / Quick Start Guide Card */}
-            <div className="glass-panel" style={{ padding: "24px", borderRadius: "12px", border: "1px solid rgba(0, 242, 254, 0.2)", background: "rgba(10, 15, 30, 0.4)", position: "relative", overflow: "hidden", marginTop: "24px", marginBottom: "24px" }}>
-              {/* Background Glow */}
-              <div style={{ position: "absolute", top: "-50px", right: "-50px", width: "180px", height: "180px", background: "radial-gradient(circle, rgba(0, 242, 254, 0.15) 0%, transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
-              
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "12px", marginBottom: "16px", position: "relative", zIndex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "1.3rem" }}>🚀</span>
-                  <div>
-                    <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, color: "#ffffff" }}>First-Time Setup & Quick Start Guide</h3>
-                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "2px" }}>Follow these 3 simple steps to automate your applications</p>
-                  </div>
-                </div>
+              <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", justifyContent: "center" }}>
                 <button 
-                  onClick={() => setShowOnboarding(!showOnboarding)}
+                  onClick={() => {
+                    setAuthMode("register");
+                    setActiveTab("settings");
+                  }}
+                  className="glass-btn" 
+                  style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 28px" }}
+                >
+                  🚀 Create Sync Account
+                </button>
+                <button 
+                  onClick={() => {
+                    setAuthMode("login");
+                    setActiveTab("settings");
+                  }}
+                  className="glass-btn-secondary" 
+                  style={{ padding: "14px 28px" }}
+                >
+                  🔑 Sign In
+                </button>
+                <button 
+                  onClick={() => {
+                    setSandboxMode(true);
+                    setActiveTab("dashboard");
+                    setAlertMessage({ type: "success", text: "Sandbox Demonstration Mode active!" });
+                  }}
+                  className="glass-btn-secondary" 
                   style={{ 
-                    background: "rgba(255,255,255,0.05)", 
-                    border: "1px solid rgba(255,255,255,0.1)", 
-                    color: "var(--color-text-primary)", 
-                    padding: "6px 12px", 
-                    borderRadius: "6px", 
-                    fontSize: "0.75rem", 
-                    fontWeight: 600, 
-                    cursor: "pointer" 
+                    border: "1px solid var(--color-primary)", 
+                    color: "var(--color-primary)",
+                    padding: "14px 28px",
+                    background: "rgba(0, 242, 254, 0.05)"
                   }}
                 >
-                  {showOnboarding ? "Collapse Guide ⬆️" : "Expand Guide ⬇️"}
+                  🌐 Run Guest Sandbox Preview
                 </button>
               </div>
+            </div>
+          </div>
+        )}
 
-              {showOnboarding && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px", position: "relative", zIndex: 1 }}>
-                  {/* Step 1 */}
-                  <div className="glass-panel" style={{ padding: "16px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "12px" }}>
+        {/* ── TAB 2: DASHBOARD / LAUNCH PAD VIEW (REAL-TIME CONSOLE & VIEWER) ── */}
+        {activeTab === "dashboard" && (
+          <>
+            {/* Guided Stepper checklist at startup */}
+            {!sandboxMode && onboardingStep < 3 && (
+              <div className="glass-panel" style={{ padding: "24px", border: "1px solid rgba(0, 242, 254, 0.3)", background: "rgba(10, 15, 30, 0.4)", position: "relative" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "12px", marginBottom: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "1.3rem" }}>🗺️</span>
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                        <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.1)", borderRadius: "4px", fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 800 }}>STEP 1</span>
-                        <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Drop Your CV & Profile Facts</h4>
-                      </div>
-                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
-                        Go to the **Resume & Facts** page. Drag & drop your PDF resume. Groq AI extracts structural details automatically, and you can edit or add missing information to fine-tune your matching facts.
-                      </p>
+                      <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1rem", fontWeight: 800 }}>First-Time Setup Stepper Wizard</h3>
+                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>Complete these two setup phases to unlock automation</p>
                     </div>
+                  </div>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-primary)", background: "rgba(0, 242, 254, 0.1)", padding: "4px 10px", borderRadius: "6px" }}>
+                    {onboardingStep === 1 ? "PHASE 1: API KEY" : "PHASE 2: RESUME FACTS"}
+                  </span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                  {/* Step 1 Card */}
+                  <div className="glass-panel" style={{ padding: "16px", background: onboardingStep === 1 ? "rgba(0, 242, 254, 0.03)" : "rgba(255,255,255,0.01)", borderColor: onboardingStep === 1 ? "var(--color-primary)" : "var(--border-glass)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                      <span style={{ padding: "2px 6px", background: profile.groqKey ? "rgba(52, 211, 153, 0.2)" : "rgba(243, 85, 136, 0.2)", borderRadius: "4px", fontSize: "0.65rem", fontWeight: 800, color: profile.groqKey ? "var(--color-success)" : "var(--color-accent)" }}>
+                        {profile.groqKey ? "✓ COMPLETED" : "1. CONNECT KEY"}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
+                      To automate answers, go to the Profile tab, click **Create Free Groq Key**, and paste it there.
+                    </p>
                     <button 
                       onClick={() => setActiveTab("profile")}
                       className="glass-btn-secondary" 
-                      style={{ 
-                        width: "100%", 
-                        padding: "6px 12px", 
-                        borderRadius: "6px", 
-                        fontSize: "0.75rem", 
-                        fontWeight: 700, 
-                        textAlign: "center", 
-                        cursor: "pointer",
-                        border: "1px solid rgba(0, 242, 254, 0.2)",
-                        color: "var(--color-primary)",
-                        background: "rgba(0, 242, 254, 0.03)"
-                      }}
+                      style={{ width: "100%", padding: "6px 12px", fontSize: "0.7rem", marginTop: "12px", border: "1px solid rgba(0, 242, 254, 0.2)", color: "var(--color-primary)" }}
                     >
-                      Parse Resume Now ➜
+                      Configure Groq Key ➜
                     </button>
                   </div>
 
-                  {/* Step 2 */}
-                  <div className="glass-panel" style={{ padding: "16px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                        <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.1)", borderRadius: "4px", fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 800 }}>STEP 2</span>
-                        <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Fire Up The Crawler Bot</h4>
-                      </div>
-                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
-                        Verify your Supabase credentials exist in the local `.env` file at the root. Start the automated Playwright engine by running this command in your local workspace terminal:
-                      </p>
-                    </div>
-                    <div style={{ 
-                      background: "rgba(0,0,0,0.5)", 
-                      borderRadius: "6px", 
-                      padding: "8px 12px", 
-                      fontFamily: "monospace", 
-                      fontSize: "0.75rem", 
-                      color: "var(--color-primary)", 
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
-                    }}>
-                      <span>python main.py</span>
-                      <span 
-                        style={{ cursor: "pointer", fontSize: "0.7rem", color: "var(--color-text-muted)" }} 
-                        onClick={() => {
-                          navigator.clipboard.writeText("python main.py");
-                          alert("Command copied!");
-                        }}
-                      >
-                        📋 Copy
+                  {/* Step 2 Card */}
+                  <div className="glass-panel" style={{ padding: "16px", background: onboardingStep === 2 ? "rgba(0, 242, 254, 0.03)" : "rgba(255,255,255,0.01)", borderColor: onboardingStep === 2 ? "var(--color-primary)" : "var(--border-glass)", opacity: onboardingStep < 2 ? 0.5 : 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                      <span style={{ padding: "2px 6px", background: profile.fullName ? "rgba(52, 211, 153, 0.2)" : "rgba(243, 85, 136, 0.2)", borderRadius: "4px", fontSize: "0.65rem", fontWeight: 800, color: profile.fullName ? "var(--color-success)" : "var(--color-accent)" }}>
+                        {profile.fullName ? "✓ COMPLETED" : "2. PARSE CV FACTS"}
                       </span>
                     </div>
-                  </div>
-
-                  {/* Step 3 */}
-                  <div className="glass-panel" style={{ padding: "16px", background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: "12px" }}>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                        <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.1)", borderRadius: "4px", fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 800 }}>STEP 3</span>
-                        <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff" }}>Watch The Live Bot Stream</h4>
-                      </div>
-                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
-                        Click **Start Campaign** above to launch the realtime listener channel. As the local Playwright bot fills forms and evaluates details, you'll see every element focus, click, and navigate live below!
-                      </p>
-                    </div>
-                    <div style={{ 
-                      fontSize: "0.75rem", 
-                      fontWeight: 600, 
-                      display: "flex", 
-                      alignItems: "center", 
-                      gap: "8px", 
-                      color: isCampaignRunning ? "var(--color-success)" : "var(--color-text-muted)" 
-                    }}>
-                      <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: isCampaignRunning ? "var(--color-success)" : "var(--color-text-muted)" }} />
-                      <span>{isCampaignRunning ? "Live Synchronization Active" : "Awaiting Campaign Ignition"}</span>
-                    </div>
+                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
+                      Upload your PDF resume in the Facts tab. The AI will parse details client-side using the key provided.
+                    </p>
+                    <button 
+                      disabled={onboardingStep < 2}
+                      onClick={() => setActiveTab("profile")}
+                      className="glass-btn-secondary" 
+                      style={{ width: "100%", padding: "6px 12px", fontSize: "0.7rem", marginTop: "12px" }}
+                    >
+                      Parse Resume ➜
+                    </button>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
+
+            {/* Campaign Header Controls */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "20px" }}>
+              <div>
+                <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  {sandboxMode ? "🛰️ Guest Demo Sandbox Mode" : "🚀 Campaign Launch Pad"}
+                </p>
+                <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>
+                  Job Search <span className="gradient-text">Automation</span> Console
+                </h2>
+              </div>
+
+              {/* Campaign Ignition CTAs */}
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button 
+                  id="btn-toggle-campaign"
+                  onClick={() => setIsCampaignRunning(!isCampaignRunning)}
+                  className="glass-panel"
+                  style={{ 
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "12px 24px",
+                    borderRadius: "10px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    border: "1px solid",
+                    background: isCampaignRunning ? "rgba(243, 85, 136, 0.15)" : "rgba(0, 242, 254, 0.15)",
+                    borderColor: isCampaignRunning ? "var(--color-accent)" : "var(--color-primary)",
+                    color: isCampaignRunning ? "#ff839d" : "var(--color-primary)",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  <span 
+                    className={isCampaignRunning && !botPaused ? "animate-pulse-soft" : ""} 
+                    style={{ 
+                      display: "inline-block", 
+                      width: "8px", 
+                      height: "8px", 
+                      borderRadius: "50%", 
+                      background: isCampaignRunning ? "var(--color-accent)" : "var(--color-primary)" 
+                    }}
+                  />
+                  {isCampaignRunning ? "STOP BOT CRAWL" : "LAUNCH CRAWLER BOT"}
+                </button>
+              </div>
             </div>
 
-            {/* Split layout: Terminal Console + Live Visual Bot Viewer */}
-            <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1.2fr", gap: "32px" }}>
+            {/* Metrics cards grid (Clean default metrics, no hardcoded placeholders if sync is empty!) */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "24px" }}>
+              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
+                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Total Applications</p>
+                <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }} className="gradient-text">
+                  {applications.length}
+                </h3>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "6px" }}>
+                  {applications.length > 0 ? "🟢 Database sync verified" : "Awaiting first run logs"}
+                </p>
+              </div>
+
+              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
+                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Daily Quota Cap</p>
+                <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }}>25</h3>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "6px" }}>Jobs threshold limit</p>
+              </div>
+
+              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
+                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fit Filter Match</p>
+                <h3 style={{ fontSize: "2.5rem", fontWeight: 800, marginTop: "8px" }} className="gradient-text-pink">90%+</h3>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "6px" }}>AI requirements score</p>
+              </div>
+
+              <div className="glass-panel glass-panel-hover" style={{ padding: "24px" }}>
+                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Stealth Status</p>
+                <h3 style={{ fontSize: "2rem", fontWeight: 800, marginTop: "8px", color: isCampaignRunning ? "var(--color-success)" : "var(--color-text-muted)" }}>
+                  {isCampaignRunning ? (botPaused ? "⏸️ HELD" : "🟢 ACTIVE") : "🛑 IDLE"}
+                </h3>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "6px" }}>Stealth driver active</p>
+              </div>
+            </div>
+
+            {/* Split layout: Terminal Console + Live Visual Bot Viewer with pause controls */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px" }}>
               
-              {/* Terminal Logs Simulation Column */}
+              {/* Terminal Logs Column */}
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                  📟 Playwright Console Output
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700, color: "var(--color-text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  📟 Playwright Console Feed
                 </h3>
                 
-                <div className="console-container" style={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
-                  <div className="console-header">
-                    <span className="console-dot" style={{ background: "#ef4444" }}></span>
-                    <span className="console-dot" style={{ background: "#eab308" }}></span>
-                    <span className="console-dot" style={{ background: "#22c55e" }}></span>
-                    <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginLeft: "8px", fontWeight: 600 }}>CRAWLER CONSOLE</span>
+                <div className="console-container" style={{ flexGrow: 1, display: "flex", flexDirection: "column", minHeight: "420px" }}>
+                  <div className="console-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span className="console-dot" style={{ background: "#ef4444" }}></span>
+                      <span className="console-dot" style={{ background: "#eab308" }}></span>
+                      <span className="console-dot" style={{ background: "#22c55e" }}></span>
+                      <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginLeft: "8px", fontWeight: 600 }}>CRAWLER STREAM</span>
+                    </div>
+                    {isCampaignRunning && (
+                      <span style={{ fontSize: "0.65rem", background: "rgba(0, 242, 254, 0.15)", color: "var(--color-primary)", padding: "2px 8px", borderRadius: "4px", fontWeight: 800 }}>
+                        {botPaused ? "⏸️ PAUSED" : "🟢 RUNNING"}
+                      </span>
+                    )}
                   </div>
 
-                  <div className="console-body">
+                  <div className="console-body" style={{ height: "380px" }}>
                     {consoleLogs.map((log, index) => (
                       <div key={index} style={{ 
                         lineHeight: "1.4", 
                         borderLeft: "2px solid",
-                        borderColor: log.includes("Easy Apply") || log.includes("[Applied]") ? "var(--color-success)" : log.includes("SKIPPED") || log.includes("🛑") ? "var(--color-accent)" : "rgba(255,255,255,0.1)",
+                        borderColor: log.includes("success") || log.includes("[Success]") || log.includes("🎉") ? "var(--color-success)" : log.includes("Mismatch") || log.includes("🛑") || log.includes("⚠️") ? "var(--color-accent)" : "rgba(255,255,255,0.1)",
                         paddingLeft: "8px"
                       }}>
                         {log}
@@ -1035,192 +1212,215 @@ Instructions:
                 </div>
               </div>
 
-              {/* Live Visual Bot Inspector (LinkedIn Browser Mockup) */}
+              {/* Live Visual Bot Inspector (LinkedIn Browser Mockup with pause buttons) */}
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700 }}>
-                  👁️ Live Browser Bot Viewer (Real-Time Visuals)
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>👁️ Real-Time Browser Stream</span>
+                  {sandboxMode && <span style={{ fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 700 }}>(Sandbox Demo Active)</span>}
                 </h3>
 
                 <div 
                   className="glass-panel" 
                   style={{ 
                     flexGrow: 1, 
-                    minHeight: "340px", 
+                    minHeight: "420px", 
                     background: "#0f111a", 
                     overflow: "hidden", 
                     display: "flex", 
                     flexDirection: "column",
-                    boxShadow: "0 10px 40px rgba(0,0,0,0.5)"
+                    boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
+                    border: waitingForUser ? "1px solid var(--color-accent)" : "1px solid var(--border-glass)",
+                    transition: "all 0.3s ease"
                   }}
                 >
                   {/* Browser Chrome Header Mock */}
-                  <div style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border-glass)", padding: "10px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#64748b" }}></span>
-                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#64748b" }}></span>
-                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#64748b" }}></span>
+                  <div style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid var(--border-glass)", padding: "10px 16px", display: "flex", alignItems: "center", gap: "12px", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", flexGrow: 1 }}>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#64748b" }}></span>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#64748b" }}></span>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#64748b" }}></span>
+                      </div>
+                      {/* URL Bar */}
+                      <div 
+                        style={{ 
+                          flexGrow: 1, 
+                          background: "rgba(0,0,0,0.4)", 
+                          borderRadius: "6px", 
+                          padding: "4px 12px", 
+                          fontSize: "0.75rem", 
+                          color: "var(--color-text-muted)", 
+                          fontFamily: "monospace",
+                          maxWidth: "340px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap"
+                        }}
+                      >
+                        {mockBrowserUrl}
+                      </div>
                     </div>
-                    {/* Mock URL Bar */}
-                    <div 
-                      style={{ 
-                        flexGrow: 1, 
-                        background: "rgba(0,0,0,0.4)", 
-                        borderRadius: "6px", 
-                        padding: "4px 12px", 
-                        fontSize: "0.75rem", 
-                        color: "var(--color-text-muted)", 
-                        fontFamily: "monospace",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        display: "flex",
-                        justifyContent: "space-between"
-                      }}
-                    >
-                      <span>
-                        {crawlStep >= 4 ? "https://www.linkedin.com/jobs/view/stripe-frontend-architect" : "https://www.linkedin.com/feed/"}
-                      </span>
-                      <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>🔒 Secure Proxy</span>
-                    </div>
+
+                    {/* Human controls overlaid inside browser chrome */}
+                    {isCampaignRunning && (
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button 
+                          onClick={() => setBotPaused(!botPaused)}
+                          style={{
+                            background: botPaused ? "rgba(52, 211, 153, 0.2)" : "rgba(251, 191, 36, 0.2)",
+                            border: "1px solid",
+                            borderColor: botPaused ? "var(--color-success)" : "var(--color-warning)",
+                            color: botPaused ? "var(--color-success)" : "var(--color-warning)",
+                            padding: "4px 10px",
+                            borderRadius: "4px",
+                            fontSize: "0.7rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}
+                        >
+                          {botPaused ? "▶️ CONTINUE" : "⏸️ PAUSE"}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Browser Window Body Content Mock */}
+                  {/* Browser Window Body */}
                   <div style={{ flexGrow: 1, padding: "20px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative" }}>
                     
                     {!isCampaignRunning && (
                       <div style={{ textAlign: "center", color: "var(--color-text-muted)" }}>
                         <span style={{ fontSize: "3rem" }}>🛰️</span>
                         <p style={{ fontSize: "0.9rem", marginTop: "12px", fontWeight: 600 }}>Browser Idle.</p>
-                        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>Click "Start Campaign" to launch Playwright.</p>
+                        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
+                          {onboardingStep < 3 ? "Complete step wizard requirements first" : "Click 'Launch Crawler Bot' to initiate Playwright."}
+                        </p>
                       </div>
                     )}
 
-                    {/* Step-by-Step Interactive Visual Browser Mockup */}
                     {isCampaignRunning && (
-                      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", gap: "12px", justifyContent: "center" }}>
                         
-                        {/* Loading / Searching Screen */}
+                        {/* Simulation stages */}
                         {crawlStep < 6 && (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, gap: "16px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
                             <div style={{ width: "40px", height: "40px", border: "3px solid rgba(0, 242, 254, 0.1)", borderTopColor: "var(--color-primary)", borderRadius: "50%" }} className="animate-spin-slow" />
                             <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontFamily: "monospace" }}>
-                              {crawlStep <= 2 ? "🤖 Stealth Shield booting..." : "🔍 Loading LinkedIn Jobs feed..."}
+                              {crawlStep <= 2 ? "🤖 Webdriver Stealth shielding..." : "🔍 Analyzing LinkedIn job cards..."}
                             </p>
                           </div>
                         )}
 
-                        {/* LinkedIn Job Card Found */}
+                        {/* Fit Evaluator */}
                         {crawlStep >= 6 && crawlStep < 8 && (
-                          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", flexGrow: 1, gap: "16px" }}>
-                            <div className="glass-panel" style={{ padding: "20px", background: "rgba(255,255,255,0.01)" }}>
-                              <h4 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Senior Frontend Architect</h4>
-                              <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 600, marginTop: "4px" }}>Stripe</p>
-                              
-                              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "16px" }}>
-                                <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.08)", border: "1px solid rgba(0, 242, 254, 0.15)", borderRadius: "4px", fontSize: "0.8rem", color: "var(--color-primary)", fontWeight: 700 }}>
-                                  96% Fit Match
-                                </span>
-                                <span style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)" }}>
-                                  Evaluating requirements...
-                                </span>
+                          <div className="glass-panel" style={{ padding: "20px", background: "rgba(255,255,255,0.01)" }}>
+                            <h4 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Senior Frontend Architect</h4>
+                            <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 600, marginTop: "4px" }}>Stripe</p>
+                            
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "16px" }}>
+                              <span style={{ padding: "4px 8px", background: "rgba(0, 242, 254, 0.08)", border: "1px solid rgba(0, 242, 254, 0.15)", borderRadius: "4px", fontSize: "0.8rem", color: "var(--color-primary)", fontWeight: 700 }}>
+                                96% Match Fit
+                              </span>
+                              <span style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)" }}>
+                                Analyzing requirements facts...
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Interactive Verification Solver (Relocation Question) */}
+                        {waitingForUser && (
+                          <div className="glass-panel" style={{ border: "1px solid var(--color-accent)", background: "rgba(15, 6, 12, 0.9)", padding: "20px", borderRadius: "10px", boxShadow: "0 0 24px rgba(243, 85, 136, 0.2)", width: "100%", maxWidth: "420px", margin: "0 auto", position: "relative", zIndex: 10 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(243, 85, 136, 0.2)", paddingBottom: "8px", marginBottom: "12px" }}>
+                              <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--color-accent)", display: "flex", alignItems: "center", gap: "4px" }}>
+                                ⚠️ ACTION REQUIRED
+                              </span>
+                              <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>Stealth Hold Active</span>
+                            </div>
+
+                            <p style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff", marginBottom: "12px", lineHeight: "1.4" }}>
+                              {manualQuestion}
+                            </p>
+
+                            <form onSubmit={handleSolveQuestion} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                              <input 
+                                type="text"
+                                value={manualAnswer}
+                                onChange={(e) => setManualAnswer(e.target.value)}
+                                placeholder="Type answer, e.g. Yes, willing to relocate"
+                                className="glass-input"
+                                style={{ width: "100%", fontSize: "0.8rem", padding: "8px 12px" }}
+                                required
+                              />
+
+                              <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+                                <button 
+                                  type="button"
+                                  onClick={() => setWaitingForUser(false)}
+                                  className="glass-btn-secondary"
+                                  style={{ padding: "6px 12px", fontSize: "0.75rem", border: "none" }}
+                                >
+                                  Cancel
+                                </button>
+                                <button 
+                                  type="submit"
+                                  className="glass-btn"
+                                  style={{ padding: "6px 16px", fontSize: "0.75rem", background: "linear-gradient(135deg, var(--color-accent) 0%, #ff839d 100%)", boxShadow: "0 4px 12px rgba(243, 85, 136, 0.2)" }}
+                                >
+                                  Submit Answer ▶️
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        )}
+
+                        {/* Interactive Easy Apply Input visualizer */}
+                        {crawlStep >= 8 && crawlStep <= 12 && !waitingForUser && (
+                          <div className="glass-panel" style={{ border: "1px solid var(--border-glass-hover)", background: "rgba(5, 6, 12, 0.8)", padding: "16px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "10px", width: "100%", maxWidth: "380px", margin: "0 auto" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "6px" }}>
+                              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-primary)" }}>LinkedIn Wizard - Stripe</span>
+                              <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>Step 2 of 3</span>
+                            </div>
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                <label style={{ fontSize: "0.7rem", color: "var(--color-text-secondary)" }}>Candidate Name</label>
+                                <div style={{ padding: "6px 10px", fontSize: "0.75rem", background: "rgba(0, 242, 254, 0.05)", border: "1px dashed var(--color-primary)", borderRadius: "4px", color: "#ffffff", display: "flex", justifyContent: "space-between" }}>
+                                  <span>{profile.fullName || "Alex Rivera"}</span>
+                                  <span style={{ fontSize: "0.65rem", color: "var(--color-primary)", fontWeight: 700 }}>🤖 Injected</span>
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                <label style={{ fontSize: "0.7rem", color: "var(--color-text-secondary)" }}>React Experience Years?</label>
+                                <div style={{ padding: "6px 10px", fontSize: "0.75rem", background: "rgba(0, 242, 254, 0.05)", border: "1px dashed var(--color-primary)", borderRadius: "4px", color: "#ffffff", display: "flex", justifyContent: "space-between" }}>
+                                  <span>6</span>
+                                  <span style={{ fontSize: "0.65rem", color: "var(--color-primary)", fontWeight: 700 }}>🧠 AI Answered</span>
+                                </div>
                               </div>
                             </div>
                           </div>
                         )}
 
-                        {/* Interactive Easy Apply Dialog Mockup Popup */}
-                        {crawlStep >= 8 && crawlStep <= 12 && (
-                          <div style={{ flexGrow: 1, display: "flex", flexDirection: "column" }}>
-                            {/* Easy Apply Wizard Window */}
-                            <div className="glass-panel" style={{ border: "1px solid var(--border-glass-hover)", background: "rgba(5, 6, 12, 0.8)", padding: "16px", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "14px" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "8px" }}>
-                                <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-primary)" }}>Easy Apply Wizard - Stripe</span>
-                                <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>Step 2 of 3</span>
-                              </div>
-
-                              {/* Form Inputs with simulated bot overlays */}
-                              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <label style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>Full Name</label>
-                                  <div style={{ 
-                                    padding: "8px 12px", 
-                                    fontSize: "0.8rem", 
-                                    background: "rgba(0, 242, 254, 0.05)", 
-                                    border: "1px dashed var(--color-primary)", 
-                                    borderRadius: "4px", 
-                                    color: "#ffffff",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    boxShadow: "0 0 8px rgba(0, 242, 254, 0.2)"
-                                  }}>
-                                    <span>Alex Rivera</span>
-                                    <span style={{ fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 700 }}>🤖 Injected</span>
-                                  </div>
-                                </div>
-
-                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <label style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
-                                    How many years with React?
-                                  </label>
-                                  <div style={{ 
-                                    padding: "8px 12px", 
-                                    fontSize: "0.8rem", 
-                                    background: crawlStep >= 10 ? "rgba(0, 242, 254, 0.05)" : "rgba(0,0,0,0.3)", 
-                                    border: crawlStep >= 10 ? "1px dashed var(--color-primary)" : "1px solid rgba(255,255,255,0.08)", 
-                                    borderRadius: "4px", 
-                                    color: crawlStep >= 10 ? "#ffffff" : "var(--color-text-muted)",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    boxShadow: crawlStep >= 10 ? "0 0 8px rgba(0, 242, 254, 0.2)" : "none",
-                                    transition: "all 0.3s"
-                                  }}>
-                                    <span>{crawlStep >= 10 ? "6" : "Solving..."}</span>
-                                    {crawlStep >= 10 && <span style={{ fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 700 }}>🧠 AI Solved</span>}
-                                  </div>
-                                </div>
-
-                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <label style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", fontWeight: 600 }}>
-                                    Have you ever built micro-frontends?
-                                  </label>
-                                  <div style={{ 
-                                    padding: "8px 12px", 
-                                    fontSize: "0.8rem", 
-                                    background: crawlStep >= 11 ? "rgba(0, 242, 254, 0.05)" : "rgba(0,0,0,0.3)", 
-                                    border: crawlStep >= 11 ? "1px dashed var(--color-primary)" : "1px solid rgba(255,255,255,0.08)", 
-                                    borderRadius: "4px", 
-                                    color: crawlStep >= 11 ? "#ffffff" : "var(--color-text-muted)",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    boxShadow: crawlStep >= 11 ? "0 0 8px rgba(0, 242, 254, 0.2)" : "none",
-                                    transition: "all 0.3s"
-                                  }}>
-                                    <span>{crawlStep >= 11 ? "Yes" : "Solving..."}</span>
-                                    {crawlStep >= 11 && <span style={{ fontSize: "0.7rem", color: "var(--color-primary)", fontWeight: 700 }}>🧠 AI Solved</span>}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Submit Screen */}
-                        {crawlStep === 12 && (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, gap: "12px" }}>
+                        {/* Submit Application Animation */}
+                        {crawlStep === 12 && !waitingForUser && (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
                             <div style={{ padding: "16px 32px", background: "rgba(52, 211, 153, 0.15)", border: "2px solid var(--color-success)", borderRadius: "8px", boxShadow: "0 0 20px rgba(52, 211, 153, 0.3)", animation: "pulse-soft 2s infinite" }}>
-                              <p style={{ color: "var(--color-success)", fontWeight: 700, fontSize: "0.95rem" }}>⚡ Playwright Clicking 'Submit'</p>
+                              <p style={{ color: "var(--color-success)", fontWeight: 700, fontSize: "0.95rem" }}>⚡ Clicking 'Submit Application'</p>
                             </div>
                           </div>
                         )}
 
-                        {/* Success Screen */}
-                        {crawlStep >= 13 && (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, gap: "16px" }}>
-                            <span style={{ fontSize: "3.5rem", animation: "pulse-soft 2s infinite" }}>🎉</span>
+                        {/* Success Event */}
+                        {easyApplyStep === 3 && (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
+                            <span style={{ fontSize: "3.5rem" }}>🎉</span>
                             <div style={{ textAlign: "center" }}>
                               <h4 style={{ color: "var(--color-success)", fontWeight: 800, fontSize: "1.2rem" }}>Application Submitted!</h4>
                               <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "6px" }}>
-                                Stripe application logged to local database.
+                                Stripe application logged securely to history.
                               </p>
                             </div>
                           </div>
@@ -1236,77 +1436,172 @@ Instructions:
           </>
         )}
 
-        {/* ── TAB 2: RESUME & FACTS VIEW ── */}
+        {/* ── TAB 3: RESUME facts & BYOK SETTINGS ── */}
         {activeTab === "profile" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+            
+            {/* Header */}
             <div>
-              <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Resume Analyzer</p>
-              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>Profile <span className="gradient-text">Facts</span> & Settings</h2>
+              <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Onboarding Core</p>
+              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>Resume facts & <span className="gradient-text">API Keys</span></h2>
               <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: "4px" }}>
-                Upload your CV to auto-fill details, then tweak or insert any facts the AI might have missed.
+                Provide your private Groq Key and upload your CV PDF to automatically parse personal facts.
               </p>
             </div>
 
-            {/* Drag & Drop Upload Zone */}
+            {/* Stepper Wizard Indicator */}
+            {!sandboxMode && (
+              <div style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "20px" }}>
+                <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep >= 1 ? "var(--color-primary)" : "var(--color-text-muted)" }}>Step 1: API Key Config</span>
+                  <div style={{ height: "4px", background: onboardingStep >= 1 ? "var(--color-primary)" : "var(--border-glass)", borderRadius: "2px" }} />
+                </div>
+                <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep >= 2 ? "var(--color-primary)" : "var(--color-text-muted)" }}>Step 2: Parse PDF CV</span>
+                  <div style={{ height: "4px", background: onboardingStep >= 2 ? "var(--color-primary)" : "var(--border-glass)", borderRadius: "2px" }} />
+                </div>
+                <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep >= 3 ? "var(--color-primary)" : "var(--color-text-muted)" }}>Step 3: Campaign Ignition</span>
+                  <div style={{ height: "4px", background: onboardingStep >= 3 ? "var(--color-primary)" : "var(--border-glass)", borderRadius: "2px" }} />
+                </div>
+              </div>
+            )}
+
+            {/* Step 1: BYOK API Key Guide Container */}
+            <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "20px", border: onboardingStep === 1 ? "1px solid var(--color-primary)" : "1px solid var(--border-glass)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+                <div>
+                  <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>🔐</span> Guided API Key Configuration (BYOK)
+                  </h3>
+                  <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "4px", maxWidth: "580px" }}>
+                    Enjoy 100% free autonomous applications. Creating a key takes less than 30 seconds.
+                  </p>
+                </div>
+                
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <a 
+                    href="https://console.groq.com/keys" 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="glass-btn" 
+                    style={{ fontSize: "0.75rem", padding: "8px 16px", textDecoration: "none", display: "inline-block", background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)", boxShadow: "0 0 16px rgba(0, 242, 254, 0.2)" }}
+                  >
+                    🔑 Create Free Groq Key
+                  </a>
+                  <button 
+                    onClick={handlePasteKey}
+                    className="glass-btn-secondary" 
+                    style={{ fontSize: "0.75rem", padding: "8px 16px" }}
+                  >
+                    📋 Paste Key
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions list */}
+              <div className="glass-panel" style={{ padding: "16px 20px", background: "rgba(255,255,255,0.01)" }}>
+                <p style={{ fontSize: "0.8rem", lineHeight: "1.6" }}>
+                  <strong>How to get your key:</strong>
+                  <br />
+                  1. Click the <strong>Create Free Groq Key</strong> button above (opens Groq's official developer site).
+                  <br />
+                  2. Sign in with standard email credentials or Google account.
+                  <br />
+                  3. Click the bright green <strong>"Create API Key"</strong> button, type a name (e.g. <em>AutoApply Bot</em>), and click Create.
+                  <br />
+                  4. Copy the generated key (starts with <code>gsk_</code>), come back here, and click <strong>Paste Key</strong> or paste it manually below!
+                </p>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label htmlFor="groqKey" style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Private Groq API Key</label>
+                <input 
+                  type="password" 
+                  id="groqKey" 
+                  value={profile.groqKey} 
+                  onChange={e => setProfile({...profile, groqKey: e.target.value})} 
+                  className="glass-input" 
+                  placeholder="gsk_..." 
+                />
+              </div>
+            </div>
+
+            {/* Step 2: Drag and drop CV Parser */}
             <div 
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                if (onboardingStep < 2 && !sandboxMode) {
+                  setAlertMessage({ type: "info", text: "Please enter and save your API Key first to enable parsing!" });
+                  setTimeout(() => setAlertMessage(null), 4000);
+                  return;
+                }
+                const file = e.dataTransfer.files[0];
+                if (file && (file.type === "application/pdf" || file.name.endsWith(".pdf"))) {
+                  handleCVUpload(file);
+                }
+              }}
               className="glass-panel"
               style={{
                 border: isDragging ? "2px dashed var(--color-primary)" : "1px dashed var(--border-glass)",
                 background: isDragging ? "rgba(0, 242, 254, 0.04)" : "rgba(255, 255, 255, 0.01)",
                 borderRadius: "12px",
-                padding: "40px",
+                padding: "36px",
                 textAlign: "center",
-                cursor: "pointer",
-                position: "relative",
-                transition: "all 0.3s ease",
-                boxShadow: isDragging ? "0 0 24px rgba(0, 242, 254, 0.15)" : "none"
+                cursor: (onboardingStep >= 2 || sandboxMode) ? "pointer" : "not-allowed",
+                opacity: (onboardingStep >= 2 || sandboxMode) ? 1 : 0.5,
+                transition: "all 0.3s ease"
               }}
             >
               <input 
+                disabled={onboardingStep < 2 && !sandboxMode}
                 type="file" 
                 id="cv-file-input" 
-                accept=".pdf,.docx" 
-                onChange={handleFileChange}
+                accept=".pdf" 
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files && files.length > 0) handleCVUpload(files[0]);
+                }}
                 style={{ display: "none" }}
               />
               
               {isParsing ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-                  <div style={{ width: "40px", height: "40px", border: "3px solid rgba(0, 242, 254, 0.1)", borderTopColor: "var(--color-primary)", borderRadius: "50%" }} className="animate-spin-slow" />
-                  <div>
-                    <p style={{ color: "var(--color-primary)", fontWeight: 700, fontSize: "1rem" }}>🧠 AI Engine: Reading PDF Structure...</p>
-                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>Extracting career data & skills profile.</p>
-                  </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                  <div style={{ width: "36px", height: "36px", border: "3px solid rgba(0, 242, 254, 0.1)", borderTopColor: "var(--color-primary)", borderRadius: "50%" }} className="animate-spin-slow" />
+                  <p style={{ color: "var(--color-primary)", fontWeight: 700, fontSize: "0.85rem" }}>🧠 Client-Side AI Parser: Analysing resume structural layout...</p>
                 </div>
               ) : (
-                <label htmlFor="cv-file-input" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", width: "100%" }}>
-                  <span style={{ fontSize: "2.5rem" }}>📄</span>
+                <label htmlFor={onboardingStep >= 2 || sandboxMode ? "cv-file-input" : ""} style={{ cursor: (onboardingStep >= 2 || sandboxMode) ? "pointer" : "not-allowed", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", width: "100%" }}>
+                  <span style={{ fontSize: "2.2rem" }}>📄</span>
                   <div>
-                    <h3 style={{ fontSize: "1rem", fontWeight: 700 }}>
-                      {fileName ? `File Selected: ${fileName}` : "Drag and Drop your PDF or Word CV here"}
+                    <h3 style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                      {fileName ? `Active CV Facts Loaded: ${fileName}` : "Drag and Drop your PDF CV resume here"}
                     </h3>
-                    <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "6px" }}>
-                      Supports PDF and DOCX formats up to 10MB
+                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
+                      Supports PDF formats. AI parses contact variables directly in the browser.
                     </p>
                   </div>
-                  <span className="glass-btn-secondary" style={{ padding: "6px 16px", fontSize: "0.8rem", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.08)", marginTop: "8px" }}>
-                    Browse Files
-                  </span>
+                  {(onboardingStep >= 2 || sandboxMode) && (
+                    <span className="glass-btn-secondary" style={{ padding: "6px 14px", fontSize: "0.75rem", marginTop: "4px" }}>
+                      Browse PDF
+                    </span>
+                  )}
                 </label>
               )}
             </div>
 
-            <form onSubmit={handleSaveProfile} className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
-              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
-                👤 Personal Details
+            {/* Candidate fact forms (Only unlocked when profile fullName is loaded) */}
+            <form onSubmit={handleSaveProfile} className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px", opacity: (profile.fullName || sandboxMode) ? 1 : 0.5 }}>
+              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+                👤 Extracted Candidate Details Facts
               </h3>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="fullName" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Full Name</label>
+                  <label htmlFor="fullName" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Full Name</label>
                   <input 
                     type="text" 
                     id="fullName" 
@@ -1318,7 +1613,7 @@ Instructions:
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="email" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Email Address</label>
+                  <label htmlFor="email" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Email Address</label>
                   <input 
                     type="email" 
                     id="email" 
@@ -1330,7 +1625,7 @@ Instructions:
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="phone" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Phone Number</label>
+                  <label htmlFor="phone" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Phone Number</label>
                   <input 
                     type="text" 
                     id="phone" 
@@ -1342,7 +1637,7 @@ Instructions:
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="city" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Location (City, State)</label>
+                  <label htmlFor="city" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Location (City, State)</label>
                   <input 
                     type="text" 
                     id="city" 
@@ -1354,58 +1649,31 @@ Instructions:
                 </div>
               </div>
 
-              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginTop: "16px" }}>
-                🔍 Target Keywords & Skills
-              </h3>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="targetKeywords" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Target Job Titles (Comma-separated)</label>
-                  <input 
-                    type="text" 
-                    id="targetKeywords" 
-                    value={profile.targetKeywords} 
-                    onChange={e => setProfile({...profile, targetKeywords: e.target.value})} 
-                    className="glass-input" 
-                    placeholder="e.g. Senior Frontend Architect, React Developer" 
-                    required 
-                  />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="skills" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Skills Matrix Keywords (Comma-separated)</label>
-                  <input 
-                    type="text" 
-                    id="skills" 
-                    value={profile.skills} 
-                    onChange={e => setProfile({...profile, skills: e.target.value})} 
-                    className="glass-input" 
-                    placeholder="e.g. React, TypeScript, GraphQL" 
-                    required 
-                  />
-                </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label htmlFor="targetKeywords" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Target Job Keywords (Comma-separated)</label>
+                <input 
+                  type="text" 
+                  id="targetKeywords" 
+                  value={profile.targetKeywords} 
+                  onChange={e => setProfile({...profile, targetKeywords: e.target.value})} 
+                  className="glass-input" 
+                  required 
+                />
               </div>
-
-              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginTop: "16px" }}>
-                🔐 Bring Your Own API Key (BYOK)
-              </h3>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label htmlFor="groqKey" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>Private Groq API Key (Stored securely on local database)</label>
+                <label htmlFor="skills" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Skills Matrix Keywords (Comma-separated)</label>
                 <input 
-                  type="password" 
-                  id="groqKey" 
-                  value={profile.groqKey} 
-                  onChange={e => setProfile({...profile, groqKey: e.target.value})} 
+                  type="text" 
+                  id="skills" 
+                  value={profile.skills} 
+                  onChange={e => setProfile({...profile, skills: e.target.value})} 
                   className="glass-input" 
-                  placeholder="gsk_..." 
+                  required 
                 />
-                <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
-                  ⚠️ Your API key remains private. It will be queried by the automation client during crawls to answer custom questions.
-                </p>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button type="submit" id="btn-save-profile" className="glass-btn">
                   SAVE CANDIDATE DETAILS
                 </button>
@@ -1414,79 +1682,80 @@ Instructions:
           </div>
         )}
 
-        {/* ── TAB 3: SEARCH LOGS VIEW ── */}
+        {/* ── TAB 4: APPLICATION HISTORY VIEW (DETAILED LOGS EXPLORER) ── */}
         {activeTab === "logs" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             <div>
               <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Crawl History</p>
-              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>Application <span className="gradient-text">Logs</span></h2>
+              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>Application <span className="gradient-text">Logs History</span></h2>
               <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: "4px" }}>
-                Review, query, and drill down into the custom tailormade assets generated for each submitted application.
+                Audit and drill down into the custom tailormade assets generated for each submitted application.
               </p>
             </div>
 
             <div className="glass-panel" style={{ padding: "24px", overflow: "hidden" }}>
-              <div style={{ display: "flex", gap: "16px", marginBottom: "20px" }}>
-                <input 
-                  type="text" 
-                  id="search-logs-input"
-                  placeholder="Search by job title or company name..." 
-                  className="glass-input" 
-                  style={{ flexGrow: 1 }}
-                />
-                <button className="glass-btn-secondary" style={{ padding: "0 24px" }}>Search</button>
-              </div>
-
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.9rem" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border-glass)", color: "var(--color-text-muted)" }}>
-                    <th style={{ padding: "16px", fontWeight: 600 }}>JOB TITLE</th>
-                    <th style={{ padding: "16px", fontWeight: 600 }}>COMPANY</th>
-                    <th style={{ padding: "16px", fontWeight: 600 }}>DATE</th>
-                    <th style={{ padding: "16px", fontWeight: 600 }}>MATCH SCORE</th>
-                    <th style={{ padding: "16px", fontWeight: 600 }}>STATUS</th>
-                    <th style={{ padding: "16px", fontWeight: 600, textAlign: "right" }}>ACTION</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {applications.map(app => (
-                    <tr key={app.id} style={{ borderBottom: "1px solid var(--border-glass)" }}>
-                      <td style={{ padding: "16px", fontWeight: 700 }}>{app.job_title}</td>
-                      <td style={{ padding: "16px" }}>{app.company}</td>
-                      <td style={{ padding: "16px", color: "var(--color-text-secondary)" }}>{app.applied_date.split(" ")[0]}</td>
-                      <td style={{ padding: "16px" }}>
-                        <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{app.match_score}%</span>
-                      </td>
-                      <td style={{ padding: "16px" }}>
-                        <span style={{ 
-                          fontSize: "0.75rem", 
-                          fontWeight: 700, 
-                          color: app.status === "Interviewing" ? "var(--color-warning)" : app.status === "Applied" ? "var(--color-success)" : "var(--color-accent)",
-                          background: app.status === "Interviewing" ? "rgba(251, 191, 36, 0.08)" : app.status === "Applied" ? "rgba(52, 211, 153, 0.08)" : "rgba(243, 85, 136, 0.08)",
-                          padding: "4px 8px",
-                          borderRadius: "4px"
-                        }}>
-                          {app.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: "16px", textAlign: "right" }}>
-                        <button 
-                          onClick={() => setSelectedApp(app)}
-                          className="glass-btn-secondary" 
-                          style={{ padding: "6px 12px", fontSize: "0.75rem", borderRadius: "6px" }}
-                        >
-                          View Details
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {applications.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--color-text-muted)" }}>
+                  <span style={{ fontSize: "2.5rem" }}>🗄️</span>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 700, marginTop: "12px", color: "#ffffff" }}>No Applications Logged</h3>
+                  <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
+                    Once Playwright successfully applies to a job, the full description, cover letter, and forms are archived here.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.9rem" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--border-glass)", color: "var(--color-text-muted)" }}>
+                        <th style={{ padding: "16px", fontWeight: 600 }}>JOB TITLE</th>
+                        <th style={{ padding: "16px", fontWeight: 600 }}>COMPANY</th>
+                        <th style={{ padding: "16px", fontWeight: 600 }}>APPLIED DATE</th>
+                        <th style={{ padding: "16px", fontWeight: 600 }}>MATCH SCORE</th>
+                        <th style={{ padding: "16px", fontWeight: 600 }}>STATUS</th>
+                        <th style={{ padding: "16px", fontWeight: 600, textAlign: "right" }}>ACTION</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {applications.map(app => (
+                        <tr key={app.id} style={{ borderBottom: "1px solid var(--border-glass)" }}>
+                          <td style={{ padding: "16px", fontWeight: 700 }}>{app.job_title}</td>
+                          <td style={{ padding: "16px" }}>{app.company}</td>
+                          <td style={{ padding: "16px", color: "var(--color-text-secondary)" }}>{app.applied_date}</td>
+                          <td style={{ padding: "16px" }}>
+                            <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{app.match_score}%</span>
+                          </td>
+                          <td style={{ padding: "16px" }}>
+                            <span style={{ 
+                              fontSize: "0.75rem", 
+                              fontWeight: 700, 
+                              color: app.status === "Interviewing" ? "var(--color-warning)" : app.status === "Applied" ? "var(--color-success)" : "var(--color-accent)",
+                              background: app.status === "Interviewing" ? "rgba(251, 191, 36, 0.08)" : app.status === "Applied" ? "rgba(52, 211, 153, 0.08)" : "rgba(243, 85, 136, 0.08)",
+                              padding: "4px 8px",
+                              borderRadius: "4px"
+                            }}>
+                              {app.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "16px", textAlign: "right" }}>
+                            <button 
+                              onClick={() => setSelectedApp(app)}
+                              className="glass-btn-secondary" 
+                              style={{ padding: "6px 12px", fontSize: "0.75rem", borderRadius: "6px" }}
+                            >
+                              Explore Audit Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* ── TAB 4: CONNECTIONS & SETTINGS VIEW ── */}
+        {/* ── TAB 5: CONNECTIONS & INTEGRATIONS VIEW ── */}
         {activeTab === "settings" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             <div>
@@ -1502,7 +1771,7 @@ Instructions:
               <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "20px", border: "1px solid rgba(0, 242, 254, 0.2)", background: "rgba(10, 15, 30, 0.3)" }}>
                 <div>
                   <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span>🔐</span> Supabase User Authentication
+                    <span>🔐</span> Supabase User Authentication Portal
                   </h3>
                   <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
                     Sign in or create a new account to unlock cloud storage for your profile, applications, and real-time Playwright telemetry tracking.
@@ -1613,7 +1882,7 @@ Instructions:
 
             <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
               <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
-                🌐 Database Integration
+                🌐 Database Integration Status
               </h3>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1640,13 +1909,13 @@ Instructions:
 
               <div className="glass-panel" style={{ padding: "16px 20px", background: "rgba(255,255,255,0.01)" }}>
                 <p style={{ fontSize: "0.85rem", lineHeight: "1.5" }}>
-                  💡 **How to link a live database:**
+                  💡 <strong>How to link a live database:</strong>
                   <br />
-                  1. Launch a project at **[Supabase.com](https://supabase.com)**.
+                  1. Launch a project at <strong>[Supabase.com](https://supabase.com)</strong>.
                   <br />
-                  2. Execute our SQL definitions script ([schema.sql](file:///c:/Users/Dell/.gemini/antigravity/scratch/JobSearchBot/schema.sql)) inside the Supabase SQL editor.
+                  2. Execute our SQL definitions script (schema.sql) inside the Supabase SQL editor.
                   <br />
-                  3. In the project folder `frontend/.env.local`, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to your keys.
+                  3. In the project folder <code>frontend/.env.local</code>, set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.
                 </p>
               </div>
             </div>
@@ -1655,7 +1924,7 @@ Instructions:
 
       </main>
 
-      {/* ── APPLICATION DETAIL MODAL ── */}
+      {/* ── APPLICATION AUDIT SLIDE-OVER DRAWER MODAL ── */}
       {selectedApp && (
         <div style={{ 
           position: "fixed", 
@@ -1667,40 +1936,52 @@ Instructions:
           backdropFilter: "blur(12px)", 
           display: "flex", 
           alignItems: "center", 
-          justifyContent: "center",
+          justifyContent: "flex-end", // Align to right side as slider drawer
           zIndex: 1000,
-          padding: "24px"
-        }}>
+          transition: "all 0.3s ease"
+        }}
+        onClick={() => setSelectedApp(null)}
+        >
           <div 
             className="glass-panel" 
             style={{ 
               width: "100%", 
-              maxWidth: "750px", 
-              maxHeight: "90%", 
-              background: "#0f111a", 
-              padding: "32px",
+              maxWidth: "600px", 
+              height: "100%", 
+              background: "#0c0d12", 
+              padding: "40px 32px",
               display: "flex",
               flexDirection: "column",
               gap: "24px",
-              overflowY: "auto"
+              overflowY: "auto",
+              borderRadius: "0",
+              borderLeft: "1px solid var(--border-glass-hover)",
+              boxShadow: "-10px 0 40px rgba(0,242,254,0.15)"
             }}
+            onClick={(e) => e.stopPropagation()} // Prevent closing on inner clicks
           >
+            {/* Drawer Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid var(--border-glass)", paddingBottom: "16px" }}>
               <div>
                 <span style={{ 
-                  fontSize: "0.75rem", 
-                  fontWeight: 700, 
+                  fontSize: "0.7rem", 
+                  fontWeight: 800, 
                   color: "var(--color-primary)", 
                   background: "rgba(0, 242, 254, 0.08)",
                   padding: "4px 8px",
                   borderRadius: "4px",
                   border: "1px solid rgba(0, 242, 254, 0.15)"
                 }}>
-                  {selectedApp.match_score}% Match Score
+                  {selectedApp.match_score}% Fit score verified by AI
                 </span>
-                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.4rem", fontWeight: 800, marginTop: "8px" }}>{selectedApp.job_title}</h3>
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.5rem", fontWeight: 800, marginTop: "8px" }}>
+                  {selectedApp.job_title}
+                </h3>
                 <p style={{ fontSize: "0.9rem", color: "var(--color-text-secondary)", marginTop: "4px" }}>
-                  {selectedApp.company} • {selectedApp.location}
+                  🏢 <strong>{selectedApp.company}</strong> • {selectedApp.location}
+                </p>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "6px" }}>
+                  📅 Applied Date: {selectedApp.applied_date}
                 </p>
               </div>
               
@@ -1709,48 +1990,70 @@ Instructions:
                 className="glass-btn-secondary" 
                 style={{ padding: "6px 12px", borderRadius: "6px" }}
               >
-                Close
+                Close Drawer
               </button>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {/* Drawer Content */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              
+              {/* Fit Description */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--color-primary)", textTransform: "uppercase" }}>📝 tailored Cover Letter Generated</h4>
-                <div 
-                  className="glass-panel" 
-                  style={{ 
-                    padding: "16px 20px", 
-                    background: "rgba(0,0,0,0.2)", 
-                    fontFamily: "var(--font-family-body)",
-                    fontSize: "0.85rem",
-                    lineHeight: "1.5",
-                    whiteSpace: "pre-wrap",
-                    color: "var(--color-text-primary)"
-                  }}
-                >
-                  {selectedApp.cover_letter}
-                </div>
+                <h4 style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fit Assessment Summary</h4>
+                <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", lineHeight: "1.5", background: "rgba(255,255,255,0.01)", padding: "12px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                  Matches required skills catalog ({profile.skills.split(",").slice(0, 4).join(", ")}). AI-guided evaluator determined an excellent overlap, scoring it {selectedApp.match_score}% and tailoring the application pitch context.
+                </p>
               </div>
 
+              {/* Cover Letter */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <h4 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--color-text-secondary)", textTransform: "uppercase" }}>💼 Scraped Job Requirements</h4>
-                <div 
-                  className="glass-panel" 
-                  style={{ 
-                    padding: "16px 20px", 
-                    background: "rgba(0,0,0,0.2)", 
-                    fontFamily: "var(--font-family-body)",
-                    fontSize: "0.85rem",
-                    lineHeight: "1.5",
-                    whiteSpace: "pre-wrap",
-                    color: "var(--color-text-secondary)",
-                    maxHeight: "150px",
-                    overflowY: "auto"
-                  }}
-                >
-                  {selectedApp.job_description}
-                </div>
+                <h4 style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Hyper-Tailored Cover Letter used</h4>
+                <pre style={{ 
+                  whiteSpace: "pre-wrap", 
+                  fontFamily: "var(--font-family-body)", 
+                  fontSize: "0.8rem", 
+                  color: "var(--color-text-secondary)",
+                  lineHeight: "1.5",
+                  background: "rgba(0,0,0,0.4)",
+                  padding: "16px",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(255,255,255,0.05)",
+                  maxHeight: "220px",
+                  overflowY: "auto"
+                }}>
+                  {selectedApp.cover_letter}
+                </pre>
               </div>
+
+              {/* Inputs filled */}
+              {selectedApp.filled_inputs && Object.keys(selectedApp.filled_inputs).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <h4 style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Custom Form Inputs Solved</h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", background: "rgba(255,255,255,0.01)", padding: "12px", borderRadius: "6px", border: "1px solid var(--border-glass)" }}>
+                    {Object.entries(selectedApp.filled_inputs).map(([key, val]) => (
+                      <div key={key} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.03)", paddingBottom: "6px", fontSize: "0.8rem" }}>
+                        <span style={{ color: "var(--color-text-secondary)", fontWeight: 600 }}>{key}:</span>
+                        <strong style={{ color: "var(--color-primary)" }}>{val}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Job Description Summary */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <h4 style={{ fontSize: "0.85rem", fontWeight: 800, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Job Description Context</h4>
+                <p style={{ 
+                  fontSize: "0.8rem", 
+                  color: "var(--color-text-muted)", 
+                  lineHeight: "1.4",
+                  maxHeight: "120px",
+                  overflowY: "auto"
+                }}>
+                  {selectedApp.job_description}
+                </p>
+              </div>
+
             </div>
           </div>
         </div>
