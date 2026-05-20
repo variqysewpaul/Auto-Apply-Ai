@@ -25,10 +25,14 @@ create table public.profiles (
 -- Enable Row-Level Security
 alter table public.profiles enable row level security;
 
--- Policies: Users can only select or update their own profile record.
+-- Policies: Users can only view, insert, or update their own profile record.
 create policy "Users can view own profile" 
   on public.profiles for select 
   using (auth.uid() = id);
+
+create policy "Users can insert own profile" 
+  on public.profiles for insert 
+  with check (auth.uid() = id);
 
 create policy "Users can update own profile" 
   on public.profiles for update 
