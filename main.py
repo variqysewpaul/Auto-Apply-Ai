@@ -23,10 +23,21 @@ def run_bot():
     
     print("Profile loaded successfully.")
     print(f"  Targets: {', '.join(criteria.get('titles', []))}")
+    
+    # Auto-detect cloud / displayless environments to override headed configuration dynamically
+    import sys
+    import os
+    headless_mode = not show_browser
+    if sys.platform.startswith("linux") and not os.environ.get("DISPLAY"):
+        print("  [Detect] Running on Linux without XServer/DISPLAY (Cloud environment). Forcing Headless mode.")
+        db.log_bot_event("log", {"message": "Cloud host detected (displayless environment). Forcing Headless mode."})
+        headless_mode = True
+        show_browser = False
+
     print(f"  Browser Visibility: {'ON' if show_browser else 'OFF (Headless)'}")
 
     with sync_playwright() as p:
-        context = get_authenticated_context(p, headless=not show_browser, session_cookies=profile.get("session_cookies"))
+        context = get_authenticated_context(p, headless=headless_mode, session_cookies=profile.get("session_cookies"))
         page = context.new_page()
 
         for target_job in criteria.get("titles", []):
