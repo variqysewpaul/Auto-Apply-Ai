@@ -56,12 +56,29 @@ export default function DashboardPage() {
     email: "",
     phone: "",
     address: "",
-    city: "",
+    city: "", // Living Location (backward compatible with the city DB column)
+    targetLocations: "", // Target search location (stored in search_criteria.target_locations)
     githubUrl: "",
     linkedinUrl: "",
     targetKeywords: "",
     skills: "",
-    groqKey: ""
+    groqKey: "",
+    // Workplace Types
+    workplaceRemote: true,
+    workplaceHybrid: true,
+    workplaceOnsite: false,
+    // Job Types
+    jobFullTime: true,
+    jobPartTime: false,
+    jobContract: false,
+    jobInternship: false,
+    jobTemporary: false,
+    // Other filters
+    experienceEntry: true,
+    experienceMidSenior: true,
+    experienceDirector: false,
+    minMatchScore: 80,
+    maxDailyApps: 25
   });
 
   // Supabase Auth Form States
@@ -69,6 +86,7 @@ export default function DashboardPage() {
   const [authEmail, setAuthEmail] = useState<string>("");
   const [authPassword, setAuthPassword] = useState<string>("");
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
+  const [showWelcomeAuth, setShowWelcomeAuth] = useState<boolean>(false);
 
   // Applications Database List
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
@@ -76,6 +94,7 @@ export default function DashboardPage() {
 
   // Message alert state
   const [alertMessage, setAlertMessage] = useState<{ type: "success" | "info"; text: string } | null>(null);
+  const [rlsErrorSql, setRlsErrorSql] = useState<string | null>(null);
   
   // Setup Guide Checklist Step (1: API Key, 2: CV upload, 3: Launch Ready)
   const [onboardingStep, setOnboardingStep] = useState<number>(1);
@@ -117,20 +136,12 @@ export default function DashboardPage() {
     }
   ];
 
-  // Dynamic Onboarding Step Tracker
+  // Dynamic Onboarding Step Tracker for Sandbox mode
   useEffect(() => {
     if (sandboxMode) {
       setOnboardingStep(3); // Pre-verified for sandbox preview
-      return;
     }
-    if (!profile.groqKey) {
-      setOnboardingStep(1);
-    } else if (!profile.fullName || !fileName) {
-      setOnboardingStep(2);
-    } else {
-      setOnboardingStep(3);
-    }
-  }, [profile.groqKey, profile.fullName, fileName, sandboxMode]);
+  }, [sandboxMode]);
 
   // Check if Supabase keys are active in client
   useEffect(() => {
@@ -173,11 +184,25 @@ export default function DashboardPage() {
         phone: "+1 (555) 019-2834",
         address: "120 Hawthorne St",
         city: "San Francisco, CA",
+        targetLocations: "San Francisco Bay Area, Remote",
         githubUrl: "https://github.com/alexrivera",
         linkedinUrl: "https://linkedin.com/in/alexrivera",
         targetKeywords: "Senior React Developer, Frontend Engineer, Software Engineer",
         skills: "React, TypeScript, Next.js, Node.js, Playwright, Python, LLMs, CSS Grid",
-        groqKey: "gsk_SimulatedDemoKey1029384756"
+        groqKey: "gsk_SimulatedDemoKey1029384756",
+        workplaceRemote: true,
+        workplaceHybrid: true,
+        workplaceOnsite: false,
+        jobFullTime: true,
+        jobPartTime: false,
+        jobContract: false,
+        jobInternship: false,
+        jobTemporary: false,
+        experienceEntry: false,
+        experienceMidSenior: true,
+        experienceDirector: false,
+        minMatchScore: 85,
+        maxDailyApps: 20
       });
       setFileName("alex_rivera_resume.pdf");
     } else if (!supabaseUser) {
@@ -188,11 +213,25 @@ export default function DashboardPage() {
         phone: "",
         address: "",
         city: "",
+        targetLocations: "",
         githubUrl: "",
         linkedinUrl: "",
         targetKeywords: "",
         skills: "",
-        groqKey: ""
+        groqKey: "",
+        workplaceRemote: true,
+        workplaceHybrid: true,
+        workplaceOnsite: false,
+        jobFullTime: true,
+        jobPartTime: false,
+        jobContract: false,
+        jobInternship: false,
+        jobTemporary: false,
+        experienceEntry: true,
+        experienceMidSenior: true,
+        experienceDirector: false,
+        minMatchScore: 80,
+        maxDailyApps: 25
       });
       setFileName("");
       setApplications([]);
@@ -237,25 +276,96 @@ export default function DashboardPage() {
           .eq("id", user.id)
           .single();
         if (data) {
+          const sc = data.search_criteria || {};
+          const dbKey = data.encrypted_groq_key || "";
+          const finalKey = dbKey || (profile.groqKey.startsWith("gsk_") ? profile.groqKey : "");
+
           setProfile({
             fullName: data.full_name || "",
             email: user.email || "",
             phone: data.phone || "",
             address: data.address || "",
-            city: data.city || "",
+            city: data.city || sc.living_location || "",
+            targetLocations: sc.target_locations?.join(", ") || "",
             githubUrl: data.github_url || "",
             linkedinUrl: data.linkedin_url || "",
-            targetKeywords: data.search_criteria?.titles?.join(", ") || "",
+            targetKeywords: sc.titles?.join(", ") || "",
             skills: data.skills?.join(", ") || "",
-            groqKey: data.encrypted_groq_key || ""
-          } as any);
+            groqKey: finalKey,
+            // Workplace Types
+            workplaceRemote: sc.workplace_types ? sc.workplace_types.includes("remote") : true,
+            workplaceHybrid: sc.workplace_types ? sc.workplace_types.includes("hybrid") : true,
+            workplaceOnsite: sc.workplace_types ? sc.workplace_types.includes("onsite") : false,
+            // Job Types
+            jobFullTime: sc.job_types ? sc.job_types.includes("full-time") : true,
+            jobPartTime: sc.job_types ? sc.job_types.includes("part-time") : false,
+            jobContract: sc.job_types ? sc.job_types.includes("contract") : false,
+            jobInternship: sc.job_types ? sc.job_types.includes("internship") : false,
+            jobTemporary: sc.job_types ? sc.job_types.includes("temporary") : false,
+            // Other filters
+            experienceEntry: sc.experience_levels ? sc.experience_levels.includes("entry") : true,
+            experienceMidSenior: sc.experience_levels ? sc.experience_levels.includes("mid-senior") : true,
+            experienceDirector: sc.experience_levels ? sc.experience_levels.includes("director") : false,
+            minMatchScore: sc.min_match_score || 80,
+            maxDailyApps: sc.max_daily_apps || 25
+          });
+
           if (data.full_name) {
             setFileName("CV_Facts_Loaded_from_Database.pdf");
           }
+          
+          // Auto-save key to DB if we had it locally but not in DB
+          if (finalKey && !dbKey && isSupabaseConnected) {
+            await supabase.from("profiles").upsert({
+              id: user.id,
+              encrypted_groq_key: finalKey
+            });
+          }
+
+          // Dynamically set correct onboarding step based on actual database facts
+          if (finalKey && data.full_name) {
+            setOnboardingStep(3);
+          } else if (finalKey) {
+            setOnboardingStep(2);
+          } else {
+            setOnboardingStep(1);
+          }
+        } else {
+          // Initialize at least the email field from the authenticated session
+          setProfile(prev => ({
+            ...prev,
+            email: user.email || ""
+          }));
+          setOnboardingStep(1);
         }
       }
     } catch (e) {
       console.error("Could not fetch user profile from Supabase:", e);
+    }
+  };
+
+  const scrollToAndFocus = (elementId: string, focusId?: string) => {
+    const el = document.getElementById(elementId);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (focusId) {
+        setTimeout(() => {
+          document.getElementById(focusId)?.focus();
+        }, 500);
+      }
+      
+      // Temporary premium neon glow indicator
+      const originalBorder = el.style.borderColor;
+      const originalShadow = el.style.boxShadow;
+      
+      el.style.transition = "all 0.4s ease";
+      el.style.borderColor = "var(--color-primary)";
+      el.style.boxShadow = "0 0 25px rgba(0, 242, 254, 0.45)";
+      
+      setTimeout(() => {
+        el.style.borderColor = originalBorder;
+        el.style.boxShadow = originalShadow;
+      }, 2000);
     }
   };
 
@@ -300,6 +410,7 @@ export default function DashboardPage() {
         });
       }
       setAuthPassword("");
+      setShowWelcomeAuth(false);
     } catch (error: any) {
       console.error("Authentication error:", error);
       setAlertMessage({ type: "info", text: `Authentication Error: ${error.message}` });
@@ -396,36 +507,36 @@ Text: ${text}`;
       if (keyToUse && keyToUse.startsWith("gsk_")) {
         setAlertMessage({ type: "info", text: "Connecting to Groq AI..." });
         const parsed = await parseCVWithGroq(extractedText, keyToUse);
-        setProfile({
+        setProfile(prev => ({
+          ...prev,
           fullName: parsed.fullName || parsed.full_name || "Alex Rivera",
-          email: parsed.email || profile.email || "alex@example.com",
+          email: parsed.email || prev.email || "alex@example.com",
           phone: parsed.phone || "",
           address: parsed.address || "",
           city: parsed.city || "",
           githubUrl: parsed.githubUrl || parsed.github_url || "",
           linkedinUrl: parsed.linkedinUrl || parsed.linkedin_url || "",
           targetKeywords: parsed.targetKeywords || parsed.target_keywords || "Software Engineer",
-          skills: parsed.skills || "",
-          groqKey: profile.groqKey
-        });
+          skills: parsed.skills || ""
+        }));
         setAlertMessage({ type: "success", text: "AI successfully parsed CV and filled details!" });
       } else {
         // Fallback offline heuristics
         const emailMatch = extractedText.match(/[\w.-]+@[\w.-]+\.\w+/)?.[0] || "";
         const phoneMatch = extractedText.match(/\+?\d[\d -]{8,15}\d/)?.[0] || "";
         
-        setProfile({
+        setProfile(prev => ({
+          ...prev,
           fullName: "CV Candidate",
-          email: emailMatch || profile.email || "candidate@example.com",
+          email: emailMatch || prev.email || "candidate@example.com",
           phone: phoneMatch || "",
           address: "",
           city: "",
           githubUrl: "",
           linkedinUrl: "",
           targetKeywords: "Software Developer",
-          skills: "React, TypeScript, Next.js, Node.js",
-          groqKey: profile.groqKey
-        });
+          skills: "React, TypeScript, Next.js, Node.js"
+        }));
         setAlertMessage({ 
           type: "info", 
           text: "Parsed using offline heuristics! Enter a Groq Key for advanced AI extraction." 
@@ -444,29 +555,122 @@ Text: ${text}`;
     e.preventDefault();
     if (isSupabaseConnected && supabaseUser) {
       try {
-        const { error } = await supabase
+        const workplaceTypes = [];
+        if (profile.workplaceRemote) workplaceTypes.push("remote");
+        if (profile.workplaceHybrid) workplaceTypes.push("hybrid");
+        if (profile.workplaceOnsite) workplaceTypes.push("onsite");
+
+        const jobTypes = [];
+        if (profile.jobFullTime) jobTypes.push("full-time");
+        if (profile.jobPartTime) jobTypes.push("part-time");
+        if (profile.jobContract) jobTypes.push("contract");
+        if (profile.jobInternship) jobTypes.push("internship");
+        if (profile.jobTemporary) jobTypes.push("temporary");
+
+        const experienceLevels = [];
+        if (profile.experienceEntry) experienceLevels.push("entry");
+        if (profile.experienceMidSenior) experienceLevels.push("mid-senior");
+        if (profile.experienceDirector) experienceLevels.push("director");
+
+        const searchCriteria = {
+          titles: profile.targetKeywords.split(",").map(s => s.trim()).filter(Boolean),
+          living_location: profile.city,
+          target_locations: profile.targetLocations.split(",").map(s => s.trim()).filter(Boolean),
+          workplace_types: workplaceTypes,
+          job_types: jobTypes,
+          experience_levels: experienceLevels,
+          min_match_score: Number(profile.minMatchScore),
+          max_daily_apps: Number(profile.maxDailyApps)
+        };
+
+        // Try updating first since the trigger usually pre-provisions the row.
+        // This avoids needing INSERT RLS permission for existing users.
+        const { data, error: updateError } = await supabase
           .from("profiles")
-          .upsert({
-            id: supabaseUser.id,
+          .update({
             full_name: profile.fullName,
             phone: profile.phone,
             address: profile.address,
             city: profile.city,
             github_url: profile.githubUrl,
             linkedin_url: profile.linkedinUrl,
-            search_criteria: {
-              titles: profile.targetKeywords.split(",").map(s => s.trim()),
-              locations: [profile.city]
-            },
-            skills: profile.skills.split(",").map(s => s.trim()),
+            search_criteria: searchCriteria,
+            skills: profile.skills.split(",").map(s => s.trim()).filter(Boolean),
             encrypted_groq_key: profile.groqKey
-          });
-        if (error) throw error;
-      } catch (e: any) {
-        setAlertMessage({ type: "info", text: `Save failed: ${e.message}` });
+          })
+          .eq("id", supabaseUser.id)
+          .select();
+
+        // If the update failed or didn't find the row, fall back to upsert
+        if (updateError || !data || data.length === 0) {
+          const { error: upsertError } = await supabase
+            .from("profiles")
+            .upsert({
+              id: supabaseUser.id,
+              full_name: profile.fullName,
+              phone: profile.phone,
+              address: profile.address,
+              city: profile.city,
+              github_url: profile.githubUrl,
+              linkedin_url: profile.linkedinUrl,
+              search_criteria: searchCriteria,
+              skills: profile.skills.split(",").map(s => s.trim()).filter(Boolean),
+              encrypted_groq_key: profile.groqKey
+            });
+          if (upsertError) throw upsertError;
+        }
+      } catch (err: any) {
+        setAlertMessage({ type: "info", text: `Save failed: ${err.message}` });
+        if (err.message?.includes("row-level security policy") || err.message?.includes("RLS")) {
+          setRlsErrorSql(`-- ── 1. Enable Row-Level Security (RLS) policies ──
+alter table public.profiles enable row level security;
+
+-- Drop policies if they exist to avoid duplication errors
+drop policy if exists "Users can view own profile" on public.profiles;
+drop policy if exists "Users can insert own profile" on public.profiles;
+drop policy if exists "Users can update own profile" on public.profiles;
+
+create policy "Users can view own profile" 
+  on public.profiles for select 
+  using (auth.uid() = id);
+
+create policy "Users can insert own profile" 
+  on public.profiles for insert 
+  with check (auth.uid() = id);
+
+create policy "Users can update own profile" 
+  on public.profiles for update 
+  using (auth.uid() = id);
+
+-- ── 2. Add automatic profile generation trigger on Auth signup ──
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, full_name, search_criteria, skills)
+  values (new.id, '', '{}'::jsonb, '{}'::text[])
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Drop trigger if exists to avoid duplication errors
+drop trigger if exists on_auth_user_created on auth.users;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- ── 3. Retroactively insert missing profiles for existing auth users ──
+insert into public.profiles (id, full_name, search_criteria, skills)
+select id, '', '{}'::jsonb, '{}'::text[]
+from auth.users
+where id not in (select id from public.profiles)
+on conflict (id) do nothing;`);
+        }
         return;
       }
     }
+    setOnboardingStep(3);
     setAlertMessage({ type: "success", text: "Facts saved successfully!" });
     setTimeout(() => setAlertMessage(null), 4000);
   };
@@ -943,154 +1147,628 @@ Text: ${text}`;
 
         {/* ── TAB 1: WELCOME LANDING PAGE (GUIDED INTRODUCTION) ── */}
         {activeTab === "welcome" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "40px", maxWidth: "900px", margin: "0 auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "32px", maxWidth: "1100px", margin: "0 auto", padding: "10px 0" }}>
+            
+            {/* Header Title Section */}
             <div style={{ textAlign: "center" }}>
-              <p style={{ fontSize: "0.95rem", color: "var(--color-primary)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em" }}>Introducing the Future of Job Hunting</p>
-              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "3.2rem", fontWeight: 800, marginTop: "12px", lineHeight: "1.1" }}>
-                Automate Your Job Applications with <span className="gradient-text">Autonomous AI</span>
+              <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em" }}>🛰️ AutoApply Pro Orchestrator</p>
+              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.8rem", fontWeight: 800, marginTop: "8px", lineHeight: "1.15" }}>
+                Launch Your Autonomous <span className="gradient-text">AI Job Search</span>
               </h2>
-              <p style={{ color: "var(--color-text-secondary)", fontSize: "1.1rem", marginTop: "16px", maxWidth: "680px", margin: "16px auto 0" }}>
-                AutoApply Pro logs onto LinkedIn via residential proxies, parses complex questions with custom-tailored Groq LLM intelligence, and applies to hundreds of jobs with zero visual footprints.
+              <p style={{ color: "var(--color-text-secondary)", fontSize: "0.95rem", marginTop: "12px", maxWidth: "680px", margin: "12px auto 0", lineHeight: "1.5" }}>
+                AutoApply Pro links your custom resume facts with high-speed local AI. Watch Playwright navigate sites and complete complex forms in real-time.
               </p>
             </div>
 
-            {/* Core Value Proposition Banners */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "24px", marginTop: "16px" }}>
-              <div className="glass-panel" style={{ padding: "24px" }}>
-                <span style={{ fontSize: "2rem" }}>🧠</span>
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginTop: "12px" }}>Bring Your Own Key (BYOK)</h3>
-                <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "8px", lineHeight: "1.5" }}>
-                  Save your private Groq API key directly to your database. Enjoy completely free AI calls with unlimited daily operations, saving hundreds in centralized host fees.
-                </p>
-              </div>
-
-              <div className="glass-panel" style={{ padding: "24px" }}>
-                <span style={{ fontSize: "2rem" }}>📄</span>
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginTop: "12px" }}>One-Click Resume Parser</h3>
-                <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "8px", lineHeight: "1.5" }}>
-                  Drag & drop your PDF resume. Our client-side analyzer extracts email, contact facts, and core tech arrays in under 3 seconds to map them to standard application formats.
-                </p>
-              </div>
-
-              <div className="glass-panel" style={{ padding: "24px" }}>
-                <span style={{ fontSize: "2rem" }}>👁️</span>
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, marginTop: "12px" }}>Human Bot Control Viewer</h3>
-                <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "8px", lineHeight: "1.5" }}>
-                  Watch a real-time live capture stream of the Playwright bot navigating LinkedIn. Pause, resume, or answer complex manual verification questions directly from your interface.
-                </p>
-              </div>
-            </div>
-
-            {/* Guided Path Selector / CTAs */}
-            <div className="glass-panel" style={{ padding: "32px", border: "1px solid rgba(0, 242, 254, 0.2)", background: "rgba(10, 15, 30, 0.3)", display: "flex", flexDirection: "column", gap: "24px", alignItems: "center", textAlign: "center" }}>
-              <div>
-                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.3rem", fontWeight: 800 }}>Ready to get started? Select a route below</h3>
-                <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: "4px" }}>No credit card required. Experience live automation instantly.</p>
-              </div>
-
-              <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", justifyContent: "center" }}>
-                <button 
-                  onClick={() => {
-                    setAuthMode("register");
-                    setActiveTab("settings");
-                  }}
-                  className="glass-btn" 
-                  style={{ display: "flex", alignItems: "center", gap: "8px", padding: "14px 28px" }}
-                >
-                  🚀 Create Sync Account
-                </button>
-                <button 
-                  onClick={() => {
-                    setAuthMode("login");
-                    setActiveTab("settings");
-                  }}
-                  className="glass-btn-secondary" 
-                  style={{ padding: "14px 28px" }}
-                >
-                  🔑 Sign In
-                </button>
-                <button 
-                  onClick={() => {
-                    setSandboxMode(true);
-                    setActiveTab("dashboard");
-                    setAlertMessage({ type: "success", text: "Sandbox Demonstration Mode active!" });
-                  }}
-                  className="glass-btn-secondary" 
-                  style={{ 
-                    border: "1px solid var(--color-primary)", 
+            {/* Split Dual-Pane View */}
+            <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: "32px", alignItems: "start", marginTop: "10px" }}>
+              
+              {/* Left Pane: 3-Step Timeline Process Card Stack */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                
+                {/* Timeline Node 1 */}
+                <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", gap: "16px", border: "1px solid var(--border-glass)", position: "relative" }}>
+                  <div style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    background: "rgba(0, 242, 254, 0.15)",
+                    border: "2px solid var(--color-primary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "0.85rem",
+                    fontWeight: 800,
                     color: "var(--color-primary)",
-                    padding: "14px 28px",
-                    background: "rgba(0, 242, 254, 0.05)"
-                  }}
-                >
-                  🌐 Run Guest Sandbox Preview
-                </button>
+                    flexShrink: 0
+                  }}>1</div>
+                  <div style={{ flexGrow: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff" }}>Step 1: Obtain AI Brain Key</h3>
+                      <button
+                        onClick={() => window.open("https://console.groq.com/keys", "_blank")}
+                        className="glass-btn"
+                        style={{ fontSize: "0.7rem", padding: "4px 10px", display: "flex", alignItems: "center", gap: "4px", background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)" }}
+                      >
+                        🔑 Get Groq Key
+                      </button>
+                    </div>
+                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", marginTop: "4px", lineHeight: "1.4" }}>
+                      Create a free developer account on Groq Console and copy a <strong>gsk_...</strong> key. Zero fees & extremely fast!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Timeline Node 2 */}
+                <div id="welcome-step-2-card" className="glass-panel" style={{ padding: "20px 24px", display: "flex", gap: "16px", border: "1px solid var(--border-glass)", flexDirection: "column" }}>
+                  <div style={{ display: "flex", gap: "16px" }}>
+                    <div style={{
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      background: profile.groqKey.startsWith("gsk_") ? "rgba(52, 211, 153, 0.15)" : "rgba(243, 85, 136, 0.15)",
+                      border: profile.groqKey.startsWith("gsk_") ? "2px solid var(--color-success)" : "2px solid var(--color-accent)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.85rem",
+                      fontWeight: 800,
+                      color: profile.groqKey.startsWith("gsk_") ? "var(--color-success)" : "var(--color-accent)",
+                      flexShrink: 0,
+                      transition: "all 0.3s"
+                    }}>2</div>
+                    <div style={{ flexGrow: 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff" }}>Step 2: Connect Key Locally</h3>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button
+                            onClick={handlePasteKey}
+                            className="glass-btn-secondary"
+                            style={{ fontSize: "0.7rem", padding: "4px 10px" }}
+                          >
+                            📋 Paste Key
+                          </button>
+                        </div>
+                      </div>
+                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", marginTop: "4px", lineHeight: "1.4" }}>
+                        Paste your key below to connect the local AI brain engine.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: "4px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", position: "relative", alignItems: "center" }}>
+                      <input
+                        type="password"
+                        id="welcome-groq-key-input"
+                        value={profile.groqKey}
+                        onChange={(e) => setProfile({ ...profile, groqKey: e.target.value })}
+                        className="glass-input"
+                        placeholder="gsk_..."
+                        style={{ width: "100%", paddingRight: "100px", fontSize: "0.8rem", height: "36px" }}
+                      />
+                      <span style={{
+                        position: "absolute",
+                        right: "10px",
+                        fontSize: "0.65rem",
+                        fontWeight: 800,
+                        padding: "3px 8px",
+                        borderRadius: "4px",
+                        background: profile.groqKey.startsWith("gsk_") ? "rgba(52, 211, 153, 0.15)" : "rgba(243, 85, 136, 0.15)",
+                        color: profile.groqKey.startsWith("gsk_") ? "var(--color-success)" : "var(--color-accent)",
+                        border: "1px solid",
+                        borderColor: profile.groqKey.startsWith("gsk_") ? "rgba(52, 211, 153, 0.3)" : "rgba(243, 85, 136, 0.3)"
+                      }}>
+                        {profile.groqKey.startsWith("gsk_") ? "Verified Key ✓" : "Key Required ✗"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timeline Node 3 */}
+                <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", gap: "16px", border: "1px solid var(--border-glass)" }}>
+                  <div style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    background: (supabaseUser || sandboxMode) ? "rgba(52, 211, 153, 0.15)" : "rgba(0, 242, 254, 0.15)",
+                    border: (supabaseUser || sandboxMode) ? "2px solid var(--color-success)" : "2px solid var(--color-primary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "0.85rem",
+                    fontWeight: 800,
+                    color: (supabaseUser || sandboxMode) ? "var(--color-success)" : "var(--color-primary)",
+                    flexShrink: 0
+                  }}>3</div>
+                  <div style={{ flexGrow: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff" }}>
+                        {(supabaseUser || sandboxMode) ? "Step 3: Ready to Launch!" : "Step 3: Secure & Launch"}
+                      </h3>
+                      {!(supabaseUser || sandboxMode) ? (
+                        <button
+                          onClick={() => scrollToAndFocus("welcome-auth-panel", "authEmailWelcome")}
+                          className="glass-btn-secondary"
+                          style={{ fontSize: "0.7rem", padding: "4px 10px" }}
+                        >
+                          🔐 Go to Auth
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setActiveTab("dashboard")}
+                          className="glass-btn"
+                          style={{ fontSize: "0.7rem", padding: "4px 10px", background: "linear-gradient(135deg, var(--color-success) 0%, var(--color-primary) 100%)" }}
+                        >
+                          🚀 Launch Bot
+                        </button>
+                      )}
+                    </div>
+                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", marginTop: "4px", lineHeight: "1.4" }}>
+                      {(supabaseUser || sandboxMode)
+                        ? "Authentication linked successfully. Your local API Key is auto-synced to the cloud!"
+                        : "Create an account or login to sync your candidate details to cloud databases and start running automated campaigns."}
+                    </p>
+                  </div>
+                </div>
+
               </div>
+
+              {/* Right Pane: Authentication & Control Center */}
+              <div id="welcome-auth-panel" style={{ position: "sticky", top: "20px" }}>
+                
+                {!(supabaseUser || sandboxMode) ? (
+                  <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px", border: "1px solid rgba(0, 242, 254, 0.2)", boxShadow: "0 0 30px rgba(0, 242, 254, 0.05)" }}>
+                    
+                    {/* Panel Header */}
+                    <div>
+                      <div style={{ display: "flex", gap: "12px", background: "rgba(0,0,0,0.3)", padding: "4px", borderRadius: "8px", width: "fit-content", marginBottom: "16px" }}>
+                        <button 
+                          onClick={() => setAuthMode("login")}
+                          style={{ 
+                            padding: "6px 16px", 
+                            borderRadius: "6px", 
+                            fontSize: "0.75rem", 
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            border: "none",
+                            background: authMode === "login" ? "rgba(0, 242, 254, 0.15)" : "transparent",
+                            color: authMode === "login" ? "var(--color-primary)" : "var(--color-text-secondary)",
+                            transition: "all 0.2s"
+                          }}
+                        >
+                          Sign In
+                        </button>
+                        <button 
+                          onClick={() => setAuthMode("register")}
+                          style={{ 
+                            padding: "6px 16px", 
+                            borderRadius: "6px", 
+                            fontSize: "0.75rem", 
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            border: "none",
+                            background: authMode === "register" ? "rgba(0, 242, 254, 0.15)" : "transparent",
+                            color: authMode === "register" ? "var(--color-primary)" : "var(--color-text-secondary)",
+                            transition: "all 0.2s"
+                          }}
+                        >
+                          Create Account
+                        </button>
+                      </div>
+                      
+                      <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 800 }}>
+                        {authMode === "login" ? "🔑 Connect to Cloud Sync" : "🚀 Get Started Free"}
+                      </h3>
+                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
+                        {authMode === "login" ? "Welcome back! Enter credentials to sync facts." : "Access cloud backups for profile history and logs."}
+                      </p>
+                    </div>
+
+                    {/* Auth Form */}
+                    <form onSubmit={handleAuthSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <label htmlFor="authEmailWelcome" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Email Address</label>
+                        <input 
+                          type="email" 
+                          id="authEmailWelcome" 
+                          value={authEmail} 
+                          onChange={(e) => setAuthEmail(e.target.value)}
+                          placeholder="yourname@domain.com"
+                          className="glass-input" 
+                          required
+                        />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <label htmlFor="authPasswordWelcome" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Password</label>
+                        <input 
+                          type="password" 
+                          id="authPasswordWelcome" 
+                          value={authPassword} 
+                          onChange={(e) => setAuthPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="glass-input" 
+                          required
+                        />
+                      </div>
+
+                      {/* Helpful Supabase Local Tip Callout */}
+                      {authMode === "register" && (
+                        <div className="glass-panel" style={{ 
+                          padding: "10px 14px", 
+                          background: "rgba(243, 85, 136, 0.04)", 
+                          border: "1px solid rgba(243, 85, 136, 0.15)", 
+                          fontSize: "0.7rem", 
+                          lineHeight: "1.4",
+                          borderRadius: "6px"
+                        }}>
+                          <strong style={{ color: "var(--color-accent)", display: "block", marginBottom: "2px" }}>💡 Setup Tip:</strong>
+                          If you receive a "Check your email" message, you must confirm your signup. To bypass this and register instantly, disable <strong>"Confirm email"</strong> in your Supabase Auth Providers dashboard!
+                        </div>
+                      )}
+
+                      <button 
+                        type="submit" 
+                        disabled={isAuthLoading}
+                        className="glass-btn" 
+                        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%" }}
+                      >
+                        {isAuthLoading && (
+                          <div style={{ width: "12px", height: "12px", border: "2px solid transparent", borderTopColor: "#fff", borderRadius: "50%" }} className="animate-spin-slow" />
+                        )}
+                        {authMode === "login" ? "SIGN IN" : "REGISTER ACCOUNT"}
+                      </button>
+                    </form>
+
+                    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", margin: "8px 0" }}>
+                      <div style={{ position: "absolute", width: "100%", height: "1px", background: "var(--border-glass)" }} />
+                      <span style={{ position: "relative", background: "rgba(12, 10, 20, 0.95)", padding: "0 10px", fontSize: "0.7rem", color: "var(--color-text-muted)", fontWeight: 600 }}>OR EXPERIENCE INSTANTLY</span>
+                    </div>
+
+                    {/* Guest Sandbox Button */}
+                    <button 
+                      onClick={() => {
+                        setSandboxMode(true);
+                        setActiveTab("dashboard");
+                        setAlertMessage({ type: "success", text: "Demo Sandbox active! Playwright logs pre-loaded." });
+                        setTimeout(() => setAlertMessage(null), 4000);
+                      }}
+                      className="glass-panel glass-panel-hover" 
+                      style={{ 
+                        border: "1px solid var(--color-primary)", 
+                        color: "var(--color-primary)",
+                        padding: "14px",
+                        textAlign: "center",
+                        background: "rgba(0, 242, 254, 0.05)",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        fontSize: "0.8rem",
+                        borderRadius: "10px",
+                        transition: "all 0.3s"
+                      }}
+                    >
+                      🌐 Run Guest Sandbox Preview
+                    </button>
+
+                  </div>
+                ) : (
+                  <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px", border: "1px solid rgba(52, 211, 153, 0.2)", boxShadow: "0 0 30px rgba(52, 211, 153, 0.05)" }}>
+                    <div>
+                      <span style={{ fontSize: "2.5rem" }}>🟢</span>
+                      <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.3rem", fontWeight: 800, marginTop: "12px" }}>
+                        Session Connected
+                      </h3>
+                      <p style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", marginTop: "6px", lineHeight: "1.4" }}>
+                        You are authenticated as <strong style={{ color: "#ffffff" }}>{supabaseUser ? supabaseUser.email : "Alex Rivera (Demo)"}</strong>. All candidate files and application history are fully synchronized.
+                      </p>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      <button 
+                        onClick={() => setActiveTab("dashboard")}
+                        className="glass-btn"
+                        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)" }}
+                      >
+                        🚀 Open Launch Pad Cockpit ➜
+                      </button>
+
+                      <button 
+                        onClick={() => setActiveTab("profile")}
+                        className="glass-btn-secondary"
+                        style={{ width: "100%", padding: "12px" }}
+                      >
+                        👤 Edit Campaign Resume facts
+                      </button>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border-glass)", paddingTop: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>Ready to configure a campaign?</span>
+                      <button 
+                        onClick={handleLogout}
+                        style={{ background: "transparent", border: "none", color: "var(--color-accent)", textDecoration: "underline", fontSize: "0.75rem", cursor: "pointer", fontWeight: 600 }}
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
             </div>
+
           </div>
         )}
 
-        {/* ── TAB 2: DASHBOARD / LAUNCH PAD VIEW (REAL-TIME CONSOLE & VIEWER) ── */}
         {activeTab === "dashboard" && (
           <>
-            {/* Guided Stepper checklist at startup */}
-            {!sandboxMode && onboardingStep < 3 && (
-              <div className="glass-panel" style={{ padding: "24px", border: "1px solid rgba(0, 242, 254, 0.3)", background: "rgba(10, 15, 30, 0.4)", position: "relative" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "12px", marginBottom: "16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "1.3rem" }}>🗺️</span>
+            {/* Unified Centered Stepper checklist at startup */}
+            {!sandboxMode && onboardingStep < 3 ? (
+              <div style={{ maxWidth: "720px", margin: "40px auto", display: "flex", flexDirection: "column", gap: "32px", width: "100%" }}>
+                
+                {/* Visual Header */}
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em" }}>
+                    🛰️ AutoApply Pro Orchestrator Activation
+                  </p>
+                  <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.4rem", fontWeight: 800, marginTop: "10px" }}>
+                    Complete Your <span className="gradient-text">AI Set Up</span>
+                  </h2>
+                  <p style={{ color: "var(--color-text-secondary)", fontSize: "0.95rem", marginTop: "12px" }}>
+                    Unlock autonomous LinkedIn job searching and direct application streaming in two simple phases.
+                  </p>
+                </div>
+
+                {/* Progress Indicators */}
+                <div style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "20px" }}>
+                  <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep === 1 ? "var(--color-primary)" : "var(--color-success)" }}>
+                      {profile.groqKey ? "✓ Phase 1: API Key Configured" : "Phase 1: Connect AI Brain"}
+                    </span>
+                    <div style={{ height: "4px", background: profile.groqKey ? "var(--color-success)" : "var(--color-primary)", borderRadius: "2px" }} />
+                  </div>
+                  <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep === 2 ? "var(--color-primary)" : "var(--color-text-muted)" }}>
+                      Phase 2: Extract Resume Facts
+                    </span>
+                    <div style={{ height: "4px", background: onboardingStep === 2 ? "var(--color-primary)" : "var(--border-glass)", borderRadius: "2px" }} />
+                  </div>
+                </div>
+
+                {/* Phase 1: API Key Form */}
+                {onboardingStep === 1 && (
+                  <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
                     <div>
-                      <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1rem", fontWeight: 800 }}>First-Time Setup Stepper Wizard</h3>
-                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>Complete these two setup phases to unlock automation</p>
+                      <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span>🧠</span> Connect Your Groq API Key
+                      </h3>
+                      <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "6px" }}>
+                        AutoApply Pro uses Groq's high-speed LLM models to dynamically analyze requirements and answer custom application questions. Enjoy completely free operations using your own developer token!
+                      </p>
                     </div>
-                  </div>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-primary)", background: "rgba(0, 242, 254, 0.1)", padding: "4px 10px", borderRadius: "6px" }}>
-                    {onboardingStep === 1 ? "PHASE 1: API KEY" : "PHASE 2: RESUME FACTS"}
-                  </span>
-                </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                  {/* Step 1 Card */}
-                  <div className="glass-panel" style={{ padding: "16px", background: onboardingStep === 1 ? "rgba(0, 242, 254, 0.03)" : "rgba(255,255,255,0.01)", borderColor: onboardingStep === 1 ? "var(--color-primary)" : "var(--border-glass)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                      <span style={{ padding: "2px 6px", background: profile.groqKey ? "rgba(52, 211, 153, 0.2)" : "rgba(243, 85, 136, 0.2)", borderRadius: "4px", fontSize: "0.65rem", fontWeight: 800, color: profile.groqKey ? "var(--color-success)" : "var(--color-accent)" }}>
-                        {profile.groqKey ? "✓ COMPLETED" : "1. CONNECT KEY"}
-                      </span>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <a 
+                        href="https://console.groq.com/keys" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="glass-btn" 
+                        style={{ fontSize: "0.8rem", padding: "10px 20px", textDecoration: "none", display: "inline-block" }}
+                      >
+                        🔑 Create Free Groq Key (30s)
+                      </a>
+                      <button 
+                        onClick={handlePasteKey}
+                        className="glass-btn-secondary" 
+                        style={{ fontSize: "0.8rem", padding: "10px 20px" }}
+                      >
+                        📋 Paste from Clipboard
+                      </button>
                     </div>
-                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
-                      To automate answers, go to the Profile tab, click **Create Free Groq Key**, and paste it there.
-                    </p>
-                    <button 
-                      onClick={() => setActiveTab("profile")}
-                      className="glass-btn-secondary" 
-                      style={{ width: "100%", padding: "6px 12px", fontSize: "0.7rem", marginTop: "12px", border: "1px solid rgba(0, 242, 254, 0.2)", color: "var(--color-primary)" }}
-                    >
-                      Configure Groq Key ➜
-                    </button>
-                  </div>
 
-                  {/* Step 2 Card */}
-                  <div className="glass-panel" style={{ padding: "16px", background: onboardingStep === 2 ? "rgba(0, 242, 254, 0.03)" : "rgba(255,255,255,0.01)", borderColor: onboardingStep === 2 ? "var(--color-primary)" : "var(--border-glass)", opacity: onboardingStep < 2 ? 0.5 : 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                      <span style={{ padding: "2px 6px", background: profile.fullName ? "rgba(52, 211, 153, 0.2)" : "rgba(243, 85, 136, 0.2)", borderRadius: "4px", fontSize: "0.65rem", fontWeight: 800, color: profile.fullName ? "var(--color-success)" : "var(--color-accent)" }}>
-                        {profile.fullName ? "✓ COMPLETED" : "2. PARSE CV FACTS"}
-                      </span>
+                    <div className="glass-panel" style={{ padding: "14px 18px", background: "rgba(255,255,255,0.01)", fontSize: "0.8rem" }}>
+                      <strong style={{ color: "var(--color-primary)" }}>Direct Instructions:</strong> Click the button above to open the developer dashboard, sign in or log in, copy a new API Key (starts with <code>gsk_</code>), and paste it below!
                     </div>
-                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.4" }}>
-                      Upload your PDF resume in the Facts tab. The AI will parse details client-side using the key provided.
-                    </p>
-                    <button 
-                      disabled={onboardingStep < 2}
-                      onClick={() => setActiveTab("profile")}
-                      className="glass-btn-secondary" 
-                      style={{ width: "100%", padding: "6px 12px", fontSize: "0.7rem", marginTop: "12px" }}
-                    >
-                      Parse Resume ➜
-                    </button>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <label htmlFor="groqKeyOnboard" style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Your API Key</label>
+                      <input 
+                        type="password" 
+                        id="groqKeyOnboard" 
+                        value={profile.groqKey} 
+                        onChange={e => setProfile({...profile, groqKey: e.target.value})} 
+                        className="glass-input" 
+                        placeholder="gsk_..." 
+                      />
+                    </div>
+
+                    {profile.groqKey.startsWith("gsk_") && (
+                      <button 
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          // Save key to database if logged in
+                          if (isSupabaseConnected && supabaseUser) {
+                            try {
+                              const { error } = await supabase
+                                .from("profiles")
+                                .update({ encrypted_groq_key: profile.groqKey })
+                                .eq("id", supabaseUser.id);
+                              if (error) throw error;
+                            } catch (err: any) {
+                              console.error("Error saving key to DB:", err);
+                            }
+                          }
+                          setOnboardingStep(2);
+                          setAlertMessage({ type: "success", text: "API Key verified and linked!" });
+                          setTimeout(() => setAlertMessage(null), 3000);
+                        }}
+                        className="glass-btn"
+                        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+                      >
+                        Activate AI Brain & Proceed ➜
+                      </button>
+                    )}
                   </div>
-                </div>
+                )}
+
+                {/* Phase 2: PDF Upload & Facts Form */}
+                {onboardingStep === 2 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                    
+                    {/* Drag/Drop Box */}
+                    <div 
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragging(false);
+                        const file = e.dataTransfer.files[0];
+                        if (file && (file.type === "application/pdf" || file.name.endsWith(".pdf"))) {
+                          handleCVUpload(file);
+                        }
+                      }}
+                      className="glass-panel"
+                      style={{
+                        border: isDragging ? "2px dashed var(--color-primary)" : "1px dashed var(--border-glass)",
+                        background: isDragging ? "rgba(0, 242, 254, 0.04)" : "rgba(255, 255, 255, 0.01)",
+                        borderRadius: "12px",
+                        padding: "36px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                        transition: "all 0.3s ease"
+                      }}
+                    >
+                      <input 
+                        type="file" 
+                        id="cv-onboard-input" 
+                        accept=".pdf" 
+                        onChange={(e) => {
+                          const files = e.target.files;
+                          if (files && files.length > 0) handleCVUpload(files[0]);
+                        }}
+                        style={{ display: "none" }}
+                      />
+                      
+                      {isParsing ? (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                          <div style={{ width: "36px", height: "36px", border: "3px solid rgba(0, 242, 254, 0.1)", borderTopColor: "var(--color-primary)", borderRadius: "50%" }} className="animate-spin-slow" />
+                          <p style={{ color: "var(--color-primary)", fontWeight: 700, fontSize: "0.85rem" }}>
+                            🧠 Client-Side AI Parser: Analysing structure and extracting contact details...
+                          </p>
+                        </div>
+                      ) : (
+                        <label htmlFor="cv-onboard-input" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", width: "100%" }}>
+                          <span style={{ fontSize: "2.5rem" }}>📄</span>
+                          <div>
+                            <h3 style={{ fontSize: "1rem", fontWeight: 700 }}>
+                              {fileName ? `Loaded Resume: ${fileName}` : "Drag and Drop your PDF CV / Resume here"}
+                            </h3>
+                            <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
+                              PDF structures are analyzed instantly using your Groq brain.
+                            </p>
+                          </div>
+                          <span className="glass-btn-secondary" style={{ padding: "6px 14px", fontSize: "0.75rem", marginTop: "4px" }}>
+                            Browse PDF File
+                          </span>
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Extracted/Editable Profile details form - always visible for manual typing or CV review */}
+                    {true && (
+                      <form onSubmit={handleSaveProfile} className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "20px" }}>
+                        <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, borderBottom: "1px solid var(--border-glass)", paddingBottom: "10px" }}>
+                          👤 Candidate Profile Details & Facts
+                        </h3>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <label htmlFor="fullNameOnboard" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Full Name</label>
+                            <input 
+                              type="text" 
+                              id="fullNameOnboard" 
+                              value={profile.fullName} 
+                              onChange={e => setProfile({...profile, fullName: e.target.value})} 
+                              className="glass-input" 
+                              required 
+                            />
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <label htmlFor="emailOnboard" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Email Address</label>
+                            <input 
+                              type="email" 
+                              id="emailOnboard" 
+                              value={profile.email} 
+                              onChange={e => setProfile({...profile, email: e.target.value})} 
+                              className="glass-input" 
+                              required 
+                            />
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <label htmlFor="phoneOnboard" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Phone Number</label>
+                            <input 
+                              type="text" 
+                              id="phoneOnboard" 
+                              value={profile.phone} 
+                              onChange={e => setProfile({...profile, phone: e.target.value})} 
+                              className="glass-input" 
+                              required 
+                            />
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                            <label htmlFor="cityOnboard" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Location (City, State)</label>
+                            <input 
+                              type="text" 
+                              id="cityOnboard" 
+                              value={profile.city} 
+                              onChange={e => setProfile({...profile, city: e.target.value})} 
+                              className="glass-input" 
+                              required 
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <label htmlFor="targetKeywordsOnboard" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Target Job Keywords (Comma-separated)</label>
+                          <input 
+                            type="text" 
+                            id="targetKeywordsOnboard" 
+                            value={profile.targetKeywords} 
+                            onChange={e => setProfile({...profile, targetKeywords: e.target.value})} 
+                            className="glass-input" 
+                            required 
+                          />
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          <label htmlFor="skillsOnboard" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Skills Keywords (Comma-separated)</label>
+                          <input 
+                            type="text" 
+                            id="skillsOnboard" 
+                            value={profile.skills} 
+                            onChange={e => setProfile({...profile, skills: e.target.value})} 
+                            className="glass-input" 
+                            required 
+                          />
+                        </div>
+
+                        <button 
+                          type="submit" 
+                          className="glass-btn"
+                          style={{ width: "100%", background: "linear-gradient(135deg, var(--color-success) 0%, var(--color-primary) 100%)", boxShadow: "0 0 20px rgba(52,211,153,0.25)" }}
+                        >
+                          💾 Save Profile & Unlock Launch Pad!
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "32px", width: "100%" }}>
 
             {/* Campaign Header Controls */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "20px" }}>
@@ -1138,6 +1816,66 @@ Text: ${text}`;
                 </button>
               </div>
             </div>
+
+            {/* Campaign Briefing Card */}
+            <div 
+              className="glass-panel" 
+              style={{ 
+                padding: "20px 24px", 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center", 
+                flexWrap: "wrap", 
+                gap: "16px",
+                border: "1px solid var(--border-glass-hover)",
+                background: "rgba(0, 242, 254, 0.02)"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "24px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>🎯 Target Role</span>
+                  <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>
+                    {profile.targetKeywords || "Not configured yet"}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>📍 Target Location</span>
+                  <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>
+                    {profile.targetLocations || "Remote / Global"}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>🧠 Groq AI Status</span>
+                  {profile.groqKey && (profile.groqKey.startsWith("gsk_") || sandboxMode) ? (
+                    <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--color-success)", display: "flex", alignItems: "center", gap: "4px" }}>
+                      🟢 ACTIVE (GSK Token)
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--color-accent)", display: "flex", alignItems: "center", gap: "4px" }}>
+                      🔴 MISSING API KEY
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setActiveTab("profile")}
+                className="glass-btn-secondary"
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "6px", 
+                  fontSize: "0.8rem", 
+                  padding: "8px 16px",
+                  borderRadius: "8px"
+                }}
+              >
+                ✏️ Edit Target Campaign
+              </button>
+            </div>
+
 
             {/* Metrics cards grid (Clean default metrics, no hardcoded placeholders if sync is empty!) */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "24px" }}>
@@ -1433,252 +2171,470 @@ Text: ${text}`;
               </div>
 
             </div>
-          </>
-        )}
 
-        {/* ── TAB 3: RESUME facts & BYOK SETTINGS ── */}
+            {/* Recent Applications Stream Feed */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>📋</span> Live Application Stream
+                </h3>
+                {applications.length > 0 && (
+                  <button 
+                    onClick={() => setActiveTab("logs")}
+                    className="glass-btn-secondary"
+                    style={{ fontSize: "0.75rem", padding: "6px 14px", borderRadius: "8px" }}
+                  >
+                    View All {applications.length} Applications ➜
+                  </button>
+                )}
+              </div>
+
+              {applications.length === 0 ? (
+                <div 
+                  className="glass-panel" 
+                  style={{ 
+                    padding: "40px", 
+                    textAlign: "center", 
+                    color: "var(--color-text-muted)",
+                    border: "1px dashed var(--border-glass)"
+                  }}
+                >
+                  <span style={{ fontSize: "2rem" }}>📡</span>
+                  <p style={{ fontSize: "0.85rem", marginTop: "12px", fontWeight: 600 }}>No applications logged yet.</p>
+                  <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
+                    Once you launch the crawler, successful applications will stream in real-time here.
+                  </p>
+                </div>
+              ) : (
+                <div className="glass-panel" style={{ overflowX: "auto", border: "1px solid var(--border-glass)" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.85rem" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid var(--border-glass)", background: "rgba(255,255,255,0.01)" }}>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--color-text-muted)" }}>ROLE</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--color-text-muted)" }}>COMPANY</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--color-text-muted)" }}>DATE</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--color-text-muted)" }}>MATCH</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--color-text-muted)" }}>STATUS</th>
+                        <th style={{ padding: "12px 16px", fontWeight: 600, color: "var(--color-text-muted)", textAlign: "right" }}>ACTION</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {applications.slice(0, 3).map(app => (
+                        <tr key={app.id} style={{ borderBottom: "1px solid var(--border-glass)" }}>
+                          <td style={{ padding: "12px 16px", fontWeight: 700 }}>{app.job_title}</td>
+                          <td style={{ padding: "12px 16px" }}>{app.company}</td>
+                          <td style={{ padding: "12px 16px", color: "var(--color-text-secondary)" }}>{app.applied_date}</td>
+                          <td style={{ padding: "12px 16px" }}>
+                            <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>{app.match_score}%</span>
+                          </td>
+                          <td style={{ padding: "12px 16px" }}>
+                            <span style={{ 
+                              fontSize: "0.7rem", 
+                              fontWeight: 700, 
+                              color: app.status === "Interviewing" ? "var(--color-warning)" : app.status === "Applied" ? "var(--color-success)" : "var(--color-accent)",
+                              background: app.status === "Interviewing" ? "rgba(251, 191, 36, 0.08)" : app.status === "Applied" ? "rgba(52, 211, 153, 0.08)" : "rgba(243, 85, 136, 0.08)",
+                              padding: "2px 6px",
+                              borderRadius: "4px"
+                            }}>
+                              {app.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                            <button 
+                              onClick={() => setSelectedApp(app)}
+                              className="glass-btn-secondary" 
+                              style={{ padding: "4px 10px", fontSize: "0.7rem", borderRadius: "6px" }}
+                            >
+                              Audit Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+      </>
+    )}
+
+        {/* ── TAB 3: RESUME FACTS & CAMPAIGN PARAMETERS ── */}
         {activeTab === "profile" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
             
             {/* Header */}
             <div>
-              <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Onboarding Core</p>
-              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>Resume facts & <span className="gradient-text">API Keys</span></h2>
+              <p style={{ fontSize: "0.85rem", color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Candidate Control</p>
+              <h2 style={{ fontFamily: "var(--font-family-title)", fontSize: "2.2rem", fontWeight: 800 }}>Resume Facts & <span className="gradient-text">Parameters</span></h2>
               <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: "4px" }}>
-                Provide your private Groq Key and upload your CV PDF to automatically parse personal facts.
+                Keep your candidate contact facts and campaign search parameters updated for automated Easy Applies.
               </p>
             </div>
 
-            {/* Stepper Wizard Indicator */}
-            {!sandboxMode && (
-              <div style={{ display: "flex", gap: "12px", borderBottom: "1px solid var(--border-glass)", paddingBottom: "20px" }}>
-                <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep >= 1 ? "var(--color-primary)" : "var(--color-text-muted)" }}>Step 1: API Key Config</span>
-                  <div style={{ height: "4px", background: onboardingStep >= 1 ? "var(--color-primary)" : "var(--border-glass)", borderRadius: "2px" }} />
-                </div>
-                <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep >= 2 ? "var(--color-primary)" : "var(--color-text-muted)" }}>Step 2: Parse PDF CV</span>
-                  <div style={{ height: "4px", background: onboardingStep >= 2 ? "var(--color-primary)" : "var(--border-glass)", borderRadius: "2px" }} />
-                </div>
-                <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: onboardingStep >= 3 ? "var(--color-primary)" : "var(--color-text-muted)" }}>Step 3: Campaign Ignition</span>
-                  <div style={{ height: "4px", background: onboardingStep >= 3 ? "var(--color-primary)" : "var(--border-glass)", borderRadius: "2px" }} />
-                </div>
-              </div>
-            )}
-
-            {/* Step 1: BYOK API Key Guide Container */}
-            <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "20px", border: onboardingStep === 1 ? "1px solid var(--color-primary)" : "1px solid var(--border-glass)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-                <div>
-                  <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span>🔐</span> Guided API Key Configuration (BYOK)
-                  </h3>
-                  <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: "4px", maxWidth: "580px" }}>
-                    Enjoy 100% free autonomous applications. Creating a key takes less than 30 seconds.
-                  </p>
-                </div>
-                
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <a 
-                    href="https://console.groq.com/keys" 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="glass-btn" 
-                    style={{ fontSize: "0.75rem", padding: "8px 16px", textDecoration: "none", display: "inline-block", background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)", boxShadow: "0 0 16px rgba(0, 242, 254, 0.2)" }}
-                  >
-                    🔑 Create Free Groq Key
-                  </a>
-                  <button 
-                    onClick={handlePasteKey}
-                    className="glass-btn-secondary" 
-                    style={{ fontSize: "0.75rem", padding: "8px 16px" }}
-                  >
-                    📋 Paste Key
-                  </button>
-                </div>
-              </div>
-
-              {/* Instructions list */}
-              <div className="glass-panel" style={{ padding: "16px 20px", background: "rgba(255,255,255,0.01)" }}>
-                <p style={{ fontSize: "0.8rem", lineHeight: "1.6" }}>
-                  <strong>How to get your key:</strong>
-                  <br />
-                  1. Click the <strong>Create Free Groq Key</strong> button above (opens Groq's official developer site).
-                  <br />
-                  2. Sign in with standard email credentials or Google account.
-                  <br />
-                  3. Click the bright green <strong>"Create API Key"</strong> button, type a name (e.g. <em>AutoApply Bot</em>), and click Create.
-                  <br />
-                  4. Copy the generated key (starts with <code>gsk_</code>), come back here, and click <strong>Paste Key</strong> or paste it manually below!
-                </p>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label htmlFor="groqKey" style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Private Groq API Key</label>
-                <input 
-                  type="password" 
-                  id="groqKey" 
-                  value={profile.groqKey} 
-                  onChange={e => setProfile({...profile, groqKey: e.target.value})} 
-                  className="glass-input" 
-                  placeholder="gsk_..." 
-                />
-              </div>
-            </div>
-
-            {/* Step 2: Drag and drop CV Parser */}
-            <div 
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragging(false);
-                if (onboardingStep < 2 && !sandboxMode) {
-                  setAlertMessage({ type: "info", text: "Please enter and save your API Key first to enable parsing!" });
-                  setTimeout(() => setAlertMessage(null), 4000);
-                  return;
-                }
-                const file = e.dataTransfer.files[0];
-                if (file && (file.type === "application/pdf" || file.name.endsWith(".pdf"))) {
-                  handleCVUpload(file);
-                }
-              }}
-              className="glass-panel"
-              style={{
-                border: isDragging ? "2px dashed var(--color-primary)" : "1px dashed var(--border-glass)",
-                background: isDragging ? "rgba(0, 242, 254, 0.04)" : "rgba(255, 255, 255, 0.01)",
-                borderRadius: "12px",
-                padding: "36px",
-                textAlign: "center",
-                cursor: (onboardingStep >= 2 || sandboxMode) ? "pointer" : "not-allowed",
-                opacity: (onboardingStep >= 2 || sandboxMode) ? 1 : 0.5,
-                transition: "all 0.3s ease"
-              }}
-            >
-              <input 
-                disabled={onboardingStep < 2 && !sandboxMode}
-                type="file" 
-                id="cv-file-input" 
-                accept=".pdf" 
-                onChange={(e) => {
-                  const files = e.target.files;
-                  if (files && files.length > 0) handleCVUpload(files[0]);
-                }}
-                style={{ display: "none" }}
-              />
+            {/* Direct Dual-Pane Editor Layout */}
+            <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: "32px", alignItems: "start" }}>
               
-              {isParsing ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                  <div style={{ width: "36px", height: "36px", border: "3px solid rgba(0, 242, 254, 0.1)", borderTopColor: "var(--color-primary)", borderRadius: "50%" }} className="animate-spin-slow" />
-                  <p style={{ color: "var(--color-primary)", fontWeight: 700, fontSize: "0.85rem" }}>🧠 Client-Side AI Parser: Analysing resume structural layout...</p>
+              {/* Left Column: PDF Uploader Dropzone */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+                
+                {/* 1. Instant Client-Side PDF CV Parser Dropzone */}
+                <div 
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const file = e.dataTransfer.files[0];
+                    if (file && (file.type === "application/pdf" || file.name.endsWith(".pdf"))) {
+                      handleCVUpload(file);
+                    }
+                  }}
+                  className="glass-panel"
+                  style={{
+                    border: isDragging ? "2px dashed var(--color-primary)" : "1px dashed var(--border-glass)",
+                    background: isDragging ? "rgba(0, 242, 254, 0.04)" : "rgba(255, 255, 255, 0.01)",
+                    borderRadius: "12px",
+                    padding: "48px 32px",
+                    textAlign: "center",
+                    cursor: "pointer",
+                    transition: "all 0.3s ease"
+                  }}
+                >
+                  <input 
+                    type="file" 
+                    id="cv-file-input" 
+                    accept=".pdf" 
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (files && files.length > 0) handleCVUpload(files[0]);
+                    }}
+                    style={{ display: "none" }}
+                  />
+                  
+                  {isParsing ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                      <div style={{ width: "40px", height: "40px", border: "3px solid rgba(0, 242, 254, 0.1)", borderTopColor: "var(--color-primary)", borderRadius: "50%" }} className="animate-spin-slow" />
+                      <p style={{ color: "var(--color-primary)", fontWeight: 700, fontSize: "0.8rem" }}>🧠 AI PDF Parser extracting contact metrics...</p>
+                    </div>
+                  ) : (
+                    <label htmlFor="cv-file-input" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", width: "100%" }}>
+                      <span style={{ fontSize: "2.5rem" }}>📄</span>
+                      <div>
+                        <h3 style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>
+                          {fileName ? `CV Facts Active: ${fileName}` : "Drag and Drop your PDF CV resume here"}
+                        </h3>
+                        <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px", lineHeight: "1.4" }}>
+                          Upload CV to instantly extract candidate contact facts, target roles, and skills list in 3 seconds.
+                        </p>
+                      </div>
+                      <span className="glass-btn-secondary" style={{ padding: "6px 16px", fontSize: "0.75rem", marginTop: "4px" }}>
+                        Browse PDF File
+                      </span>
+                    </label>
+                  )}
                 </div>
-              ) : (
-                <label htmlFor={onboardingStep >= 2 || sandboxMode ? "cv-file-input" : ""} style={{ cursor: (onboardingStep >= 2 || sandboxMode) ? "pointer" : "not-allowed", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", width: "100%" }}>
-                  <span style={{ fontSize: "2.2rem" }}>📄</span>
-                  <div>
-                    <h3 style={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                      {fileName ? `Active CV Facts Loaded: ${fileName}` : "Drag and Drop your PDF CV resume here"}
-                    </h3>
-                    <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
-                      Supports PDF formats. AI parses contact variables directly in the browser.
+
+                <div className="glass-panel" style={{ padding: "20px", fontSize: "0.75rem", color: "var(--color-text-secondary)", lineHeight: "1.5" }}>
+                  💡 <strong>Resume Parsing Tip:</strong>
+                  <br />
+                  Our offline parser processes files client-side. If you have an active Groq API Key, AutoApply Pro will utilize the LLM model to clean, reformat, and enrich the extracted facts!
+                </div>
+
+              </div>
+
+              {/* Right Column: Editable Candidate Contact & Keywords Facts */}
+              <form onSubmit={handleSaveProfile} className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px", border: "1px solid var(--border-glass)" }}>
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+                  👤 Extracted Candidate Details Facts
+                </h3>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="fullName" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Full Name</label>
+                    <input 
+                      type="text" 
+                      id="fullName" 
+                      value={profile.fullName} 
+                      onChange={e => setProfile({...profile, fullName: e.target.value})} 
+                      className="glass-input" 
+                      required 
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="email" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Email Address</label>
+                    <input 
+                      type="email" 
+                      id="email" 
+                      value={profile.email} 
+                      onChange={e => setProfile({...profile, email: e.target.value})} 
+                      className="glass-input" 
+                      required 
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="phone" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Phone Number</label>
+                    <input 
+                      type="text" 
+                      id="phone" 
+                      value={profile.phone} 
+                      onChange={e => setProfile({...profile, phone: e.target.value})} 
+                      className="glass-input" 
+                      required 
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="city" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Living Location (City, State)</label>
+                    <input 
+                      type="text" 
+                      id="city" 
+                      value={profile.city} 
+                      onChange={e => setProfile({...profile, city: e.target.value})} 
+                      className="glass-input" 
+                      placeholder="e.g. San Francisco, CA"
+                      required 
+                    />
+                  </div>
+                </div>
+
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginTop: "12px" }}>
+                  🎯 Campaign Search Parameters & Filters
+                </h3>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="targetLocations" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Target Working Locations (Comma-separated search locations)</label>
+                    <input 
+                      type="text" 
+                      id="targetLocations" 
+                      value={profile.targetLocations} 
+                      onChange={e => setProfile({...profile, targetLocations: e.target.value})} 
+                      className="glass-input" 
+                      placeholder="e.g. New York City, Austin, Seattle, remote"
+                      required 
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="targetKeywords" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Target Job Keywords / Titles (Comma-separated)</label>
+                    <input 
+                      type="text" 
+                      id="targetKeywords" 
+                      value={profile.targetKeywords} 
+                      onChange={e => setProfile({...profile, targetKeywords: e.target.value})} 
+                      className="glass-input" 
+                      placeholder="e.g. Senior Frontend Architect, Next.js Developer"
+                      required 
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="skills" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Skills Matrix Keywords (Comma-separated)</label>
+                    <input 
+                      type="text" 
+                      id="skills" 
+                      value={profile.skills} 
+                      onChange={e => setProfile({...profile, skills: e.target.value})} 
+                      className="glass-input" 
+                      placeholder="React, Next.js, Playwright, TypeScript, CSS Grid"
+                      required 
+                    />
+                  </div>
+                </div>
+
+                {/* Multi-column checkboxes for Workplace, Job Types, and Experience Levels */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px", marginTop: "12px" }}>
+                  
+                  {/* Column 1: Workplace Type */}
+                  <div className="glass-panel" style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,255,255,0.01)" }}>
+                    <h4 style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--color-primary)", borderBottom: "1px solid var(--border-glass)", paddingBottom: "6px" }}>
+                      🏠 Workplace Type
+                    </h4>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.workplaceRemote} 
+                        onChange={e => setProfile({...profile, workplaceRemote: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Remote
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.workplaceHybrid} 
+                        onChange={e => setProfile({...profile, workplaceHybrid: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Hybrid
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.workplaceOnsite} 
+                        onChange={e => setProfile({...profile, workplaceOnsite: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      On-site
+                    </label>
+                  </div>
+
+                  {/* Column 2: Job Type */}
+                  <div className="glass-panel" style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,255,255,0.01)" }}>
+                    <h4 style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--color-primary)", borderBottom: "1px solid var(--border-glass)", paddingBottom: "6px" }}>
+                      💼 Job Type
+                    </h4>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.jobFullTime} 
+                        onChange={e => setProfile({...profile, jobFullTime: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Full-Time
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.jobPartTime} 
+                        onChange={e => setProfile({...profile, jobPartTime: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Part-Time
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.jobContract} 
+                        onChange={e => setProfile({...profile, jobContract: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Contract
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.jobInternship} 
+                        onChange={e => setProfile({...profile, jobInternship: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Internship
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.jobTemporary} 
+                        onChange={e => setProfile({...profile, jobTemporary: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Temporary
+                    </label>
+                  </div>
+
+                  {/* Column 3: Experience Level */}
+                  <div className="glass-panel" style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255,255,255,0.01)" }}>
+                    <h4 style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--color-primary)", borderBottom: "1px solid var(--border-glass)", paddingBottom: "6px" }}>
+                      🎓 Experience Level
+                    </h4>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.experienceEntry} 
+                        onChange={e => setProfile({...profile, experienceEntry: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Entry Level
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.experienceMidSenior} 
+                        onChange={e => setProfile({...profile, experienceMidSenior: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Associate / Mid-Senior
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "0.75rem", cursor: "pointer" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={profile.experienceDirector} 
+                        onChange={e => setProfile({...profile, experienceDirector: e.target.checked})}
+                        style={{ accentColor: "var(--color-primary)" }}
+                      />
+                      Director / Executive
+                    </label>
+                  </div>
+                </div>
+
+                {/* Match Score & Daily Apps sliders/controls */}
+                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "24px", marginTop: "12px" }}>
+                  
+                  {/* Match Score Range Slider */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <label htmlFor="minMatchScore" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>
+                        🎯 Min AI Match Threshold: <strong style={{ color: "var(--color-primary)" }}>{profile.minMatchScore}%</strong>
+                      </label>
+                      <span style={{ fontSize: "0.65rem", padding: "2px 6px", borderRadius: "4px", background: "rgba(0,242,254,0.1)", color: "var(--color-primary)" }}>
+                        {profile.minMatchScore >= 90 ? "Strict Matching" : profile.minMatchScore >= 75 ? "Balanced Matching" : "Broad Matching"}
+                      </span>
+                    </div>
+                    <input 
+                      type="range" 
+                      id="minMatchScore" 
+                      min="50" 
+                      max="100" 
+                      step="5"
+                      value={profile.minMatchScore} 
+                      onChange={e => setProfile({...profile, minMatchScore: Number(e.target.value)})} 
+                      style={{ accentColor: "var(--color-primary)", height: "6px", borderRadius: "3px", cursor: "pointer", background: "rgba(255,255,255,0.1)", marginTop: "4px" }}
+                    />
+                    <p style={{ fontSize: "0.65rem", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                      AI will automatically skip job posts with a relevance score below this threshold.
                     </p>
                   </div>
-                  {(onboardingStep >= 2 || sandboxMode) && (
-                    <span className="glass-btn-secondary" style={{ padding: "6px 14px", fontSize: "0.75rem", marginTop: "4px" }}>
-                      Browse PDF
-                    </span>
-                  )}
-                </label>
-              )}
+
+                  {/* Daily Safe Application Cap */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="maxDailyApps" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>🛡️ Max Daily Submissions</label>
+                    <input 
+                      type="number" 
+                      id="maxDailyApps" 
+                      min="1" 
+                      max="100"
+                      value={profile.maxDailyApps} 
+                      onChange={e => setProfile({...profile, maxDailyApps: Number(e.target.value)})} 
+                      className="glass-input" 
+                      style={{ height: "36px" }}
+                      required
+                    />
+                    <p style={{ fontSize: "0.65rem", color: "var(--color-text-muted)" }}>
+                      Daily application safe limit to prevent botting flags.
+                    </p>
+                  </div>
+
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
+                  <button 
+                    type="submit" 
+                    id="btn-save-profile" 
+                    className="glass-btn"
+                    style={{ background: "linear-gradient(135deg, var(--color-success) 0%, var(--color-primary) 100%)", boxShadow: "0 0 20px rgba(52,211,153,0.2)" }}
+                  >
+                    💾 SAVE CAMPAIGN CONFIGURATION Facts
+                  </button>
+                </div>
+              </form>
+
             </div>
 
-            {/* Candidate fact forms (Only unlocked when profile fullName is loaded) */}
-            <form onSubmit={handleSaveProfile} className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px", opacity: (profile.fullName || sandboxMode) ? 1 : 0.5 }}>
-              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
-                👤 Extracted Candidate Details Facts
-              </h3>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="fullName" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Full Name</label>
-                  <input 
-                    type="text" 
-                    id="fullName" 
-                    value={profile.fullName} 
-                    onChange={e => setProfile({...profile, fullName: e.target.value})} 
-                    className="glass-input" 
-                    required 
-                  />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="email" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Email Address</label>
-                  <input 
-                    type="email" 
-                    id="email" 
-                    value={profile.email} 
-                    onChange={e => setProfile({...profile, email: e.target.value})} 
-                    className="glass-input" 
-                    required 
-                  />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="phone" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Phone Number</label>
-                  <input 
-                    type="text" 
-                    id="phone" 
-                    value={profile.phone} 
-                    onChange={e => setProfile({...profile, phone: e.target.value})} 
-                    className="glass-input" 
-                    required 
-                  />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label htmlFor="city" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Location (City, State)</label>
-                  <input 
-                    type="text" 
-                    id="city" 
-                    value={profile.city} 
-                    onChange={e => setProfile({...profile, city: e.target.value})} 
-                    className="glass-input" 
-                    required 
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label htmlFor="targetKeywords" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Target Job Keywords (Comma-separated)</label>
-                <input 
-                  type="text" 
-                  id="targetKeywords" 
-                  value={profile.targetKeywords} 
-                  onChange={e => setProfile({...profile, targetKeywords: e.target.value})} 
-                  className="glass-input" 
-                  required 
-                />
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label htmlFor="skills" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>Skills Matrix Keywords (Comma-separated)</label>
-                <input 
-                  type="text" 
-                  id="skills" 
-                  value={profile.skills} 
-                  onChange={e => setProfile({...profile, skills: e.target.value})} 
-                  className="glass-input" 
-                  required 
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button type="submit" id="btn-save-profile" className="glass-btn">
-                  SAVE CANDIDATE DETAILS
-                </button>
-              </div>
-            </form>
           </div>
         )}
 
@@ -1880,6 +2836,50 @@ Text: ${text}`;
               </div>
             )}
 
+            {/* Groq API Key Panel */}
+            <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
+              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
+                🧠 AI Engine Integration
+              </h3>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <label style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>🔑</span> Groq API Key
+                  </label>
+                  <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: "4px", marginBottom: "8px" }}>
+                    Your private key to access Llama 3 models. Stored securely and encrypted in your local session.
+                  </p>
+                  <input
+                    type="password"
+                    value={profile.groqKey}
+                    onChange={(e) => setProfile({ ...profile, groqKey: e.target.value })}
+                    className="glass-input"
+                    placeholder="gsk_..."
+                    style={{ 
+                      borderColor: profile.groqKey.startsWith("gsk_") ? "rgba(52, 211, 153, 0.4)" : "rgba(243, 85, 136, 0.4)"
+                    }}
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
+                    <span style={{ 
+                      fontSize: "0.75rem", 
+                      fontWeight: 700, 
+                      color: profile.groqKey.startsWith("gsk_") ? "var(--color-success)" : "var(--color-accent)"
+                    }}>
+                      {profile.groqKey.startsWith("gsk_") ? "✓ Valid Key Format" : "✗ Key required to start AI agent"}
+                    </span>
+                    <button 
+                      onClick={handleSaveProfile} 
+                      className="glass-btn" 
+                      style={{ padding: "8px 16px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px" }}
+                    >
+                      <span>💾</span> Save Configuration
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
               <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px" }}>
                 🌐 Database Integration Status
@@ -2058,6 +3058,110 @@ Text: ${text}`;
           </div>
         </div>
       )}
+
+      {/* ── SUPABASE ROW-LEVEL SECURITY POLICY ERROR HELPER MODAL ── */}
+      {rlsErrorSql && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          background: "rgba(10, 11, 16, 0.85)",
+          backdropFilter: "blur(12px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1100,
+          padding: "20px"
+        }}>
+          <div className="glass-panel" style={{
+            width: "100%",
+            maxWidth: "640px",
+            background: "#0c0d12",
+            border: "1px solid var(--color-accent)",
+            boxShadow: "0 0 40px rgba(243, 85, 136, 0.25)",
+            borderRadius: "12px",
+            padding: "32px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(243, 85, 136, 0.2)", paddingBottom: "12px" }}>
+              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.3rem", fontWeight: 800, color: "var(--color-accent)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>⚠️</span> Supabase Database Setup Helper
+              </h3>
+              <button 
+                onClick={() => setRlsErrorSql(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--color-text-secondary)",
+                  fontSize: "1.2rem",
+                  cursor: "pointer",
+                  fontWeight: 700
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: "0.85rem", lineHeight: "1.5", color: "var(--color-text-secondary)" }}>
+              <p style={{ marginBottom: "12px" }}>
+                Your profile save operation failed due to a Supabase Row-Level Security (RLS) policy violation.
+                By default, Postgres RLS requires explicit permission grants for both <code style={{ color: "var(--color-accent)", background: "rgba(243, 85, 136, 0.08)", padding: "2px 6px", borderRadius: "4px" }}>INSERT</code> and <code style={{ color: "var(--color-accent)", background: "rgba(243, 85, 136, 0.08)", padding: "2px 6px", borderRadius: "4px" }}>UPDATE</code> queries.
+              </p>
+              <p style={{ fontWeight: 700, color: "#ffffff", marginBottom: "8px" }}>🚀 Quick Fix Steps:</p>
+              <ol style={{ paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                <li>Copy the SQL script below.</li>
+                <li>Go to your <strong>Supabase Dashboard</strong> ➜ <strong>SQL Editor</strong>.</li>
+                <li>Paste the script, click <strong>Run</strong>, and then come back here to save your details!</li>
+              </ol>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", fontWeight: 600 }}>SQL SETUP SCRIPT</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(rlsErrorSql);
+                    setAlertMessage({ type: "success", text: "SQL copied to clipboard!" });
+                    setTimeout(() => setAlertMessage(null), 3000);
+                  }}
+                  className="glass-btn"
+                  style={{ fontSize: "0.75rem", padding: "6px 14px", display: "flex", alignItems: "center", gap: "6px", background: "linear-gradient(135deg, var(--color-accent) 0%, #ff839d 100%)", border: "none" }}
+                >
+                  📋 Copy SQL to Clipboard
+                </button>
+              </div>
+              <pre style={{
+                whiteSpace: "pre-wrap",
+                fontFamily: "monospace",
+                fontSize: "0.8rem",
+                color: "#e2e8f0",
+                background: "#05060b",
+                padding: "16px",
+                borderRadius: "8px",
+                border: "1px solid rgba(255,255,255,0.05)",
+                maxHeight: "180px",
+                overflowY: "auto",
+                lineHeight: "1.4"
+              }}>
+                {rlsErrorSql}
+              </pre>
+            </div>
+
+            <button
+              onClick={() => setRlsErrorSql(null)}
+              className="glass-btn-secondary"
+              style={{ width: "100%", padding: "10px", borderRadius: "8px", fontWeight: 700 }}
+            >
+              ✕ Dismiss & Try Again
+            </button>
+          </div>
+        </div>
+      )}
+
 
     </div>
   );
