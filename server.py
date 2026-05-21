@@ -1,9 +1,28 @@
+import sys
+import os
 import threading
 import traceback
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import db
 from main import run_bot
+
+# Redirect stdout and stderr to a file so we can view them via the /logs route
+class Logger(object):
+    def __init__(self):
+        self.terminal = sys.stdout
+        self.log = open("bot_server.log", "a", encoding="utf-8", buffering=1)
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+sys.stdout = Logger()
+sys.stderr = Logger()
 
 app = Flask(__name__)
 CORS(app)
@@ -78,6 +97,14 @@ def submit_code():
     _pending_verification_code = code
     return jsonify({"message": "Code received"}), 200
 
+@app.route('/logs', methods=['GET'])
+def get_server_logs():
+    if os.path.exists("bot_server.log"):
+        with open("bot_server.log", "r", encoding="utf-8") as f:
+            return f.read(), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    return "No logs found on server.", 404
+
 if __name__ == '__main__':
     # Start the server on port 8080 (standard for Render and other PaaS)
     app.run(host='0.0.0.0', port=8080)
+
