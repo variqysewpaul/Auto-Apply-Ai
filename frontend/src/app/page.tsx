@@ -105,6 +105,8 @@ export default function DashboardPage() {
   const [showVerificationModal, setShowVerificationModal] = useState<boolean>(false);
   const [verificationCode, setVerificationCode] = useState<string>("");
   const [isSubmittingCode, setIsSubmittingCode] = useState<boolean>(false);
+  const [isLinkedInConnected, setIsLinkedInConnected] = useState<boolean>(false);
+  const [isEditingLinkedIn, setIsEditingLinkedIn] = useState<boolean>(false);
 
   // Sandbox simulated records
   const sandboxApplicationsList: ApplicationRecord[] = [
@@ -215,8 +217,11 @@ export default function DashboardPage() {
         linkedinPassword: "demo-password"
       });
       setFileName("alex_rivera_resume.pdf");
+      setIsLinkedInConnected(true);
     } else if (!supabaseUser) {
       // Clear profile when exit sandbox and no user
+      setIsLinkedInConnected(false);
+      setIsEditingLinkedIn(false);
       setProfile({
         fullName: "",
         email: "",
@@ -325,6 +330,8 @@ export default function DashboardPage() {
             linkedinEmail: data.linkedin_email || "",
             linkedinPassword: data.linkedin_password_enc || ""
           });
+
+          setIsLinkedInConnected(!!data.linkedin_email);
 
           if (data.full_name) {
             setFileName("CV_Facts_Loaded_from_Database.pdf");
@@ -691,6 +698,8 @@ on conflict (id) do nothing;`);
         return;
       }
     }
+    setIsLinkedInConnected(!!profile.linkedinEmail);
+    setIsEditingLinkedIn(false);
     setOnboardingStep(3);
     setAlertMessage({ type: "success", text: "Facts saved successfully!" });
     setTimeout(() => setAlertMessage(null), 4000);
@@ -1391,50 +1400,83 @@ on conflict (id) do nothing;`);
                   <div style={{ display: "flex", gap: "16px" }}>
                     <div style={{
                       width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0,
-                      background: profile.linkedinEmail ? "rgba(52, 211, 153, 0.15)" : "rgba(0, 242, 254, 0.15)",
-                      border: profile.linkedinEmail ? "2px solid var(--color-success)" : "2px solid var(--color-primary)",
+                      background: isLinkedInConnected ? "rgba(52, 211, 153, 0.15)" : "rgba(0, 242, 254, 0.15)",
+                      border: isLinkedInConnected ? "2px solid var(--color-success)" : "2px solid var(--color-primary)",
                       display: "flex", alignItems: "center", justifyContent: "center",
                       fontSize: "0.85rem", fontWeight: 800,
-                      color: profile.linkedinEmail ? "var(--color-success)" : "var(--color-primary)",
+                      color: isLinkedInConnected ? "var(--color-success)" : "var(--color-primary)",
                       transition: "all 0.3s"
                     }}>3</div>
                     <div style={{ flexGrow: 1 }}>
                       <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff" }}>
-                        {profile.linkedinEmail ? "Step 3: LinkedIn Connected ✓" : "Step 3: Connect LinkedIn"}
+                        {isLinkedInConnected ? "Step 3: LinkedIn Connected ✓" : "Step 3: Connect LinkedIn"}
                       </h3>
                       <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", marginTop: "4px", lineHeight: "1.4" }}>
                         Enter your LinkedIn email and password once. The cloud bot will log in on your behalf, handle everything automatically, and re-use your session forever.
                       </p>
                     </div>
                   </div>
-                  {!profile.linkedinEmail && (
+                  {(!isLinkedInConnected || isEditingLinkedIn) ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      <input
-                        type="email"
-                        placeholder="LinkedIn Email"
-                        value={profile.linkedinEmail}
-                        onChange={(e) => setProfile({ ...profile, linkedinEmail: e.target.value })}
-                        className="glass-input"
-                        style={{ fontSize: "0.85rem" }}
-                      />
-                      <input
-                        type="password"
-                        placeholder="LinkedIn Password"
-                        value={profile.linkedinPassword}
-                        onChange={(e) => setProfile({ ...profile, linkedinPassword: e.target.value })}
-                        className="glass-input"
-                        style={{ fontSize: "0.85rem" }}
-                      />
-                      <button
-                        onClick={handleSaveProfile}
-                        className="glass-btn"
-                        style={{ fontSize: "0.8rem", padding: "8px 16px", background: "rgba(10, 102, 194, 0.2)", borderColor: "#0a66c2", color: "#0a66c2" }}
-                      >
-                        🔒 Save LinkedIn Credentials
-                      </button>
-                      <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>LinkedIn Email</label>
+                        <input
+                          type="email"
+                          placeholder="LinkedIn Email (e.g. your.email@gmail.com)"
+                          value={profile.linkedinEmail}
+                          onChange={(e) => setProfile({ ...profile, linkedinEmail: e.target.value })}
+                          className="glass-input"
+                          style={{ fontSize: "0.85rem" }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>LinkedIn Password</label>
+                        <input
+                          type="password"
+                          placeholder="LinkedIn Password"
+                          value={profile.linkedinPassword}
+                          onChange={(e) => setProfile({ ...profile, linkedinPassword: e.target.value })}
+                          className="glass-input"
+                          style={{ fontSize: "0.85rem" }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
+                        <button
+                          onClick={handleSaveProfile}
+                          className="glass-btn"
+                          style={{ fontSize: "0.8rem", padding: "8px 16px", background: "rgba(10, 102, 194, 0.2)", borderColor: "#0a66c2", color: "#0a66c2", flexGrow: 1 }}
+                        >
+                          🔒 Save LinkedIn Credentials
+                        </button>
+                        {isLinkedInConnected && (
+                          <button
+                            onClick={() => setIsEditingLinkedIn(false)}
+                            className="glass-btn-secondary"
+                            style={{ fontSize: "0.8rem", padding: "8px 16px" }}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                      <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)", marginTop: "4px" }}>
                         🔐 Credentials are stored securely in your private Supabase row with Row-Level Security. Only your cloud bot can read them.
                       </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "rgba(255, 255, 255, 0.02)", padding: "12px", borderRadius: "8px", border: "1px solid var(--border-glass)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>Connected Email:</span>
+                          <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#ffffff", marginTop: "2px" }}>{profile.linkedinEmail}</div>
+                        </div>
+                        <button
+                          onClick={() => setIsEditingLinkedIn(true)}
+                          className="glass-btn-secondary"
+                          style={{ fontSize: "0.75rem", padding: "6px 12px" }}
+                        >
+                          ✏️ Edit Credentials
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2124,7 +2166,7 @@ on conflict (id) do nothing;`);
                 </div>
               </div>
 
-              {/* Live Visual Bot Inspector (LinkedIn Browser Mockup with pause buttons) */}
+              {/* Live Visual Bot Inspector (LinkedIn Browser Mockup with pause controls) */}
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span>👁️ Real-Time Browser Stream</span>
@@ -2572,6 +2614,36 @@ on conflict (id) do nothing;`);
                       className="glass-input" 
                       placeholder="e.g. San Francisco, CA"
                       required 
+                    />
+                  </div>
+                </div>
+
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 800, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", marginTop: "12px" }}>
+                  🔑 LinkedIn Cloud Bot Credentials
+                </h3>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="linkedinEmail" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>LinkedIn Email / Username</label>
+                    <input 
+                      type="email" 
+                      id="linkedinEmail" 
+                      value={profile.linkedinEmail} 
+                      onChange={e => setProfile({...profile, linkedinEmail: e.target.value})} 
+                      className="glass-input" 
+                      placeholder="your.email@gmail.com"
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <label htmlFor="linkedinPassword" style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-secondary)" }}>LinkedIn Password</label>
+                    <input 
+                      type="password" 
+                      id="linkedinPassword" 
+                      value={profile.linkedinPassword} 
+                      onChange={e => setProfile({...profile, linkedinPassword: e.target.value})} 
+                      className="glass-input" 
+                      placeholder="••••••••••••"
                     />
                   </div>
                 </div>
