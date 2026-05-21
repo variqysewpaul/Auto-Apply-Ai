@@ -39,6 +39,18 @@ def start_crawl():
     # Simple check to prevent overlapping runs on the same tiny server
     if bot_is_running:
         return jsonify({"error": "Bot is already running"}), 409
+
+    # Extract the user's Supabase JWT and user_id from the request body
+    data = request.get_json(silent=True) or {}
+    jwt_token = data.get("jwt_token", "")
+    user_id   = data.get("user_id", "")
+
+    if not jwt_token or not user_id:
+        return jsonify({"error": "Missing jwt_token or user_id. Cannot identify user."}), 400
+
+    # Inject the user's identity into the db module so all Supabase calls
+    # operate on behalf of this specific user — no hardcoded credentials needed.
+    db.set_user_token(jwt_token, user_id)
         
     bot_is_running = True
     

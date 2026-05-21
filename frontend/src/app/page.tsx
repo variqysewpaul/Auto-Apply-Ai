@@ -717,9 +717,32 @@ on conflict (id) do nothing;`);
     const apiUrl = process.env.NEXT_PUBLIC_BOT_API_URL;
     if (apiUrl && isSupabaseConnected && supabaseUser && !sandboxMode) {
       try {
-        await fetch(`${apiUrl}/start-crawl`, { method: "POST" });
+        // Get the current session JWT so the bot knows which user's profile to load
+        const { data: sessionData } = await supabase.auth.getSession();
+        const jwtToken = sessionData?.session?.access_token;
+        const userId = supabaseUser.id;
+
+        if (!jwtToken) {
+          setAlertMessage({ type: "info", text: "Session expired. Please log out and log back in." });
+          setIsCampaignRunning(false);
+          return;
+        }
+
+        const response = await fetch(`${apiUrl}/start-crawl`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jwt_token: jwtToken, user_id: userId })
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          setAlertMessage({ type: "info", text: `Bot error: ${err.error || response.statusText}` });
+          setIsCampaignRunning(false);
+        }
       } catch (err) {
         console.error("Failed to trigger cloud bot:", err);
+        setAlertMessage({ type: "info", text: "Could not reach the bot server. Check your connection." });
+        setIsCampaignRunning(false);
       }
     }
   };

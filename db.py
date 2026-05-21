@@ -30,6 +30,16 @@ SUPABASE_USER_PASSWORD = os.getenv("SUPABASE_USER_PASSWORD")
 _jwt_token = None
 _user_id = None
 
+def set_user_token(jwt_token: str, user_id: str):
+    """Inject an already-authenticated JWT + user_id so the bot skips the
+    email/password login and operates on behalf of the correct user.
+    Called by server.py immediately after the /start-crawl request arrives.
+    """
+    global _jwt_token, _user_id
+    _jwt_token = jwt_token
+    _user_id = user_id
+    print(f"Bot authenticated as user: {user_id}")
+
 def get_auth_headers():
     global _jwt_token, _user_id
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
