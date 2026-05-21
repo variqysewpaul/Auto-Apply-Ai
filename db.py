@@ -120,6 +120,7 @@ def fetch_user_profile():
                     # The frontend stores it plainly or base64 encoded depending on implementation. 
                     # For now we pull the raw value to pass to the groq client.
                     "groqKey": row.get("encrypted_groq_key", ""),
+                    "session_cookies": row.get("session_cookies"),
                     "search_criteria": row.get("search_criteria", {})
                 }
                 

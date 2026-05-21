@@ -19,6 +19,7 @@ create table public.profiles (
   search_criteria jsonb default '{}'::jsonb,
   skills text[] default '{}'::text[],
   encrypted_groq_key text,
+  session_cookies jsonb,
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
@@ -116,4 +117,13 @@ create policy "Users can insert own bot events"
 create policy "Users can delete own bot events" 
   on public.bot_events for delete 
   using (auth.uid() = user_id);
+
+-- Enable real-time websocket broadcasting for the bot_events table
+begin;
+  -- Remove it first if it exists to prevent errors on multiple runs
+  alter publication supabase_realtime drop table public.bot_events;
+exception when others then
+  null;
+commit;
+alter publication supabase_realtime add table public.bot_events;
 

@@ -6,7 +6,7 @@ from linkedin_bot import get_authenticated_context
 from job_searcher import search_and_extract_jobs, apply_to_job, notify_user
 import db
 
-def main():
+def run_bot():
     print("Starting Job Search Automation...")
     profile = db.fetch_user_profile()
     if not profile:
@@ -26,7 +26,7 @@ def main():
     print(f"  Browser Visibility: {'ON' if show_browser else 'OFF (Headless)'}")
 
     with sync_playwright() as p:
-        context = get_authenticated_context(p, headless=not show_browser)
+        context = get_authenticated_context(p, headless=not show_browser, session_cookies=profile.get("session_cookies"))
         page = context.new_page()
 
         for target_job in criteria.get("titles", []):
@@ -96,4 +96,4 @@ def main():
         context.close()
 
 if __name__ == "__main__":
-    main()
+    run_bot()

@@ -3,7 +3,7 @@ from playwright.sync_api import sync_playwright, BrowserContext
 
 STATE_FILE = "linkedin_state.json"
 
-def get_authenticated_context(p, headless=False) -> BrowserContext:
+def get_authenticated_context(p, headless=False, session_cookies=None) -> BrowserContext:
     """
     Initializes a Playwright browser context. If a saved session exists, it uses it.
     Otherwise, it forces the user to log in manually and saves the session.
@@ -21,9 +21,13 @@ def get_authenticated_context(p, headless=False) -> BrowserContext:
 
     browser = p.chromium.launch(headless=headless)
     
-    # Check if we have a saved session
-    if os.path.exists(STATE_FILE):
-        print("Loading saved LinkedIn session with stealth context...")
+    # Check if we have a saved session passed in (e.g. from Supabase)
+    if session_cookies:
+        print("Loading saved LinkedIn session from Cloud Database...")
+        context = browser.new_context(storage_state=session_cookies, **context_args)
+    # Fallback to local file if it exists
+    elif os.path.exists(STATE_FILE):
+        print("Loading saved LinkedIn session from local disk...")
         context = browser.new_context(storage_state=STATE_FILE, **context_args)
     else:
         print("No saved session found. Starting fresh with stealth context...")

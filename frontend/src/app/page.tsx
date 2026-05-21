@@ -680,6 +680,50 @@ on conflict (id) do nothing;`);
     setTimeout(() => setAlertMessage(null), 4000);
   };
 
+  const handleLaunchClick = async () => {
+    if (isCampaignRunning) {
+      setIsCampaignRunning(false);
+      return;
+    }
+    
+    setIsCampaignRunning(true);
+    
+    // Only attempt API call if we aren't in guest sandbox and URL is configured
+    const apiUrl = process.env.NEXT_PUBLIC_BOT_API_URL;
+    if (apiUrl && isSupabaseConnected && supabaseUser && !sandboxMode) {
+      try {
+        await fetch(`${apiUrl}/start-crawl`, { method: "POST" });
+      } catch (err) {
+        console.error("Failed to trigger cloud bot:", err);
+      }
+    }
+  };
+
+  const handleSessionUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const cookies = JSON.parse(text);
+      
+      if (isSupabaseConnected && supabaseUser) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ session_cookies: cookies })
+          .eq("id", supabaseUser.id);
+          
+        if (error) throw error;
+        setAlertMessage({ type: "success", text: "Session cookies securely uploaded to cloud!" });
+        setTimeout(() => setAlertMessage(null), 3000);
+      } else {
+        setAlertMessage({ type: "info", text: "Must be connected to Supabase to upload cookies." });
+      }
+    } catch (e) {
+      setAlertMessage({ type: "info", text: "Failed to parse JSON file. Ensure it is linkedin_state.json" });
+    }
+  };
+
   // Clipboard Paste Helper for Groq Key
   const handlePasteKey = async () => {
     try {
@@ -1790,7 +1834,7 @@ on conflict (id) do nothing;`);
               <div style={{ display: "flex", gap: "12px" }}>
                 <button 
                   id="btn-toggle-campaign"
-                  onClick={() => setIsCampaignRunning(!isCampaignRunning)}
+                  onClick={handleLaunchClick}
                   className="glass-panel"
                   style={{ 
                     display: "flex",
@@ -2916,6 +2960,38 @@ on conflict (id) do nothing;`);
                   >
                     <span>💾</span> Save
                   </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Session Cookie Panel */}
+            <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
+              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>🍪</span> Cloud Session Hijacking
+              </h3>
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 700 }}>Upload linkedin_state.json</h4>
+                  <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "4px", maxWidth: "600px" }}>
+                    Bypass cloud CAPTCHAs by securely uploading your local laptop's authenticated LinkedIn session. The cloud bot will masquerade as your laptop.
+                  </p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "12px" }}>
+                  <input 
+                    type="file" 
+                    accept=".json"
+                    id="session-upload"
+                    style={{ display: "none" }}
+                    onChange={handleSessionUpload}
+                  />
+                  <label 
+                    htmlFor="session-upload"
+                    className="glass-btn" 
+                    style={{ padding: "8px 16px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", background: "rgba(52, 211, 153, 0.15)", borderColor: "var(--color-success)", color: "var(--color-success)" }}
+                  >
+                    <span>📤</span> Upload Session
+                  </label>
                 </div>
               </div>
             </div>
