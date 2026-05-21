@@ -713,9 +713,9 @@ on conflict (id) do nothing;`);
     
     setIsCampaignRunning(true);
     
-    // Only attempt API call if we aren't in guest sandbox and URL is configured
-    const apiUrl = process.env.NEXT_PUBLIC_BOT_API_URL;
-    if (apiUrl && isSupabaseConnected && supabaseUser && !sandboxMode) {
+    // Only attempt API call if we aren't in guest sandbox
+    const apiUrl = process.env.NEXT_PUBLIC_BOT_API_URL || "http://localhost:8080";
+    if (isSupabaseConnected && supabaseUser && !sandboxMode) {
       try {
         // Get the current session JWT so the bot knows which user's profile to load
         const { data: sessionData } = await supabase.auth.getSession();
@@ -2165,9 +2165,20 @@ on conflict (id) do nothing;`);
               
               {/* Terminal Logs Column */}
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700, color: "var(--color-text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                  📟 Playwright Console Feed
+                <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.1rem", fontWeight: 700, color: "var(--color-text-primary)", display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>📟 Playwright Console Feed</span>
+                  <a 
+                    href={`${process.env.NEXT_PUBLIC_BOT_API_URL || "http://localhost:8080"}/logs`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{ fontSize: "0.75rem", color: "var(--color-primary)", textDecoration: "none", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px", opacity: 0.85 }}
+                    onMouseEnter={(e) => e.currentTarget.style.opacity = "1"}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = "0.85"}
+                  >
+                    🔍 View Bot Server Logs
+                  </a>
                 </h3>
+
                 
                 <div className="console-container" style={{ flexGrow: 1, display: "flex", flexDirection: "column", minHeight: "420px" }}>
                   <div className="console-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
