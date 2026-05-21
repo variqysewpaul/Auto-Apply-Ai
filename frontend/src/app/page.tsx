@@ -79,7 +79,9 @@ export default function DashboardPage() {
     experienceDirector: false,
     minMatchScore: 80,
     maxDailyApps: 25,
-    showBrowser: true
+    showBrowser: true,
+    linkedinEmail: "",
+    linkedinPassword: ""
   });
 
   // Supabase Auth Form States
@@ -100,6 +102,9 @@ export default function DashboardPage() {
   // Setup Guide Checklist Step (1: API Key, 2: CV upload, 3: Launch Ready)
   const [onboardingStep, setOnboardingStep] = useState<number>(1);
   const [isExtensionReady, setIsExtensionReady] = useState<boolean>(false);
+  const [showVerificationModal, setShowVerificationModal] = useState<boolean>(false);
+  const [verificationCode, setVerificationCode] = useState<string>("");
+  const [isSubmittingCode, setIsSubmittingCode] = useState<boolean>(false);
 
   // Sandbox simulated records
   const sandboxApplicationsList: ApplicationRecord[] = [
@@ -205,7 +210,9 @@ export default function DashboardPage() {
         experienceDirector: false,
         minMatchScore: 85,
         maxDailyApps: 20,
-        showBrowser: true
+        showBrowser: true,
+        linkedinEmail: "alex.rivera@example.com",
+        linkedinPassword: "demo-password"
       });
       setFileName("alex_rivera_resume.pdf");
     } else if (!supabaseUser) {
@@ -235,7 +242,9 @@ export default function DashboardPage() {
         experienceDirector: false,
         minMatchScore: 80,
         maxDailyApps: 25,
-        showBrowser: true
+        showBrowser: true,
+        linkedinEmail: "",
+        linkedinPassword: ""
       });
       setFileName("");
       setApplications([]);
@@ -312,7 +321,9 @@ export default function DashboardPage() {
             experienceDirector: sc.experience_levels ? sc.experience_levels.includes("director") : false,
             minMatchScore: sc.min_match_score || 80,
             maxDailyApps: sc.max_daily_apps || 25,
-            showBrowser: sc.showBrowser !== undefined ? sc.showBrowser : true
+            showBrowser: sc.showBrowser !== undefined ? sc.showBrowser : true,
+            linkedinEmail: data.linkedin_email || "",
+            linkedinPassword: data.linkedin_password_enc || ""
           });
 
           if (data.full_name) {
@@ -602,7 +613,9 @@ Text: ${text}`;
             linkedin_url: profile.linkedinUrl,
             search_criteria: searchCriteria,
             skills: profile.skills.split(",").map(s => s.trim()).filter(Boolean),
-            encrypted_groq_key: profile.groqKey
+            encrypted_groq_key: profile.groqKey,
+            linkedin_email: profile.linkedinEmail,
+            linkedin_password_enc: profile.linkedinPassword
           })
           .eq("id", supabaseUser.id)
           .select();
@@ -621,7 +634,9 @@ Text: ${text}`;
               linkedin_url: profile.linkedinUrl,
               search_criteria: searchCriteria,
               skills: profile.skills.split(",").map(s => s.trim()).filter(Boolean),
-              encrypted_groq_key: profile.groqKey
+              encrypted_groq_key: profile.groqKey,
+              linkedin_email: profile.linkedinEmail,
+              linkedin_password_enc: profile.linkedinPassword
             });
           if (upsertError) throw upsertError;
         }
@@ -722,6 +737,27 @@ on conflict (id) do nothing;`);
       }
     } catch (e) {
       setAlertMessage({ type: "info", text: "Failed to parse JSON file. Ensure it is linkedin_state.json" });
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    if (!verificationCode.trim()) return;
+    const apiUrl = process.env.NEXT_PUBLIC_BOT_API_URL || "http://localhost:8080";
+    setIsSubmittingCode(true);
+    try {
+      await fetch(`${apiUrl}/submit-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: verificationCode.trim() })
+      });
+      setShowVerificationModal(false);
+      setVerificationCode("");
+      setAlertMessage({ type: "success", text: "Verification code sent! Bot is resuming..." });
+      setTimeout(() => setAlertMessage(null), 3000);
+    } catch (e) {
+      setAlertMessage({ type: "info", text: "Failed to send code. Check your connection." });
+    } finally {
+      setIsSubmittingCode(false);
     }
   };
 
@@ -926,6 +962,9 @@ on conflict (id) do nothing;`);
               setConsoleLogs(prev => [...prev, `⚠️ [Human Control] Paused at verification check: "${data.question}"`]);
             } else if (type === "log") {
               setConsoleLogs(prev => [...prev, `🤖 Playwright: ${data.message}`]);
+            } else if (type === "verification_required") {
+              setShowVerificationModal(true);
+              setConsoleLogs(prev => [...prev, `📱 [2FA Required] LinkedIn sent a verification code to your phone or email. Enter it in the popup.`]);
             }
           }
         )
@@ -1347,7 +1386,60 @@ on conflict (id) do nothing;`);
                   </div>
                 </div>
 
-                {/* Timeline Node 3 */}
+                {/* Timeline Node 3 — LinkedIn Credentials */}
+                <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", gap: "16px", border: "1px solid var(--border-glass)", flexDirection: "column" }}>
+                  <div style={{ display: "flex", gap: "16px" }}>
+                    <div style={{
+                      width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0,
+                      background: profile.linkedinEmail ? "rgba(52, 211, 153, 0.15)" : "rgba(0, 242, 254, 0.15)",
+                      border: profile.linkedinEmail ? "2px solid var(--color-success)" : "2px solid var(--color-primary)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: "0.85rem", fontWeight: 800,
+                      color: profile.linkedinEmail ? "var(--color-success)" : "var(--color-primary)",
+                      transition: "all 0.3s"
+                    }}>3</div>
+                    <div style={{ flexGrow: 1 }}>
+                      <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff" }}>
+                        {profile.linkedinEmail ? "Step 3: LinkedIn Connected ✓" : "Step 3: Connect LinkedIn"}
+                      </h3>
+                      <p style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)", marginTop: "4px", lineHeight: "1.4" }}>
+                        Enter your LinkedIn email and password once. The cloud bot will log in on your behalf, handle everything automatically, and re-use your session forever.
+                      </p>
+                    </div>
+                  </div>
+                  {!profile.linkedinEmail && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <input
+                        type="email"
+                        placeholder="LinkedIn Email"
+                        value={profile.linkedinEmail}
+                        onChange={(e) => setProfile({ ...profile, linkedinEmail: e.target.value })}
+                        className="glass-input"
+                        style={{ fontSize: "0.85rem" }}
+                      />
+                      <input
+                        type="password"
+                        placeholder="LinkedIn Password"
+                        value={profile.linkedinPassword}
+                        onChange={(e) => setProfile({ ...profile, linkedinPassword: e.target.value })}
+                        className="glass-input"
+                        style={{ fontSize: "0.85rem" }}
+                      />
+                      <button
+                        onClick={handleSaveProfile}
+                        className="glass-btn"
+                        style={{ fontSize: "0.8rem", padding: "8px 16px", background: "rgba(10, 102, 194, 0.2)", borderColor: "#0a66c2", color: "#0a66c2" }}
+                      >
+                        🔒 Save LinkedIn Credentials
+                      </button>
+                      <p style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>
+                        🔐 Credentials are stored securely in your private Supabase row with Row-Level Security. Only your cloud bot can read them.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+
                 <div className="glass-panel" style={{ padding: "20px 24px", display: "flex", gap: "16px", border: "1px solid var(--border-glass)" }}>
                   <div style={{
                     width: "28px",
@@ -3326,7 +3418,50 @@ on conflict (id) do nothing;`);
           </div>
         </div>
       )}
-
+      {/* ── VERIFICATION CODE MODAL ── */}
+      {showVerificationModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+          background: "rgba(0,0,0,0.75)", backdropFilter: "blur(12px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000
+        }}>
+          <div className="glass-panel" style={{ padding: "40px", maxWidth: "460px", width: "90%", textAlign: "center", display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div style={{ fontSize: "3rem" }}>📱</div>
+            <h2 style={{ fontSize: "1.4rem", fontWeight: 800 }}>LinkedIn Verification Required</h2>
+            <p style={{ fontSize: "0.9rem", color: "var(--color-text-secondary)", lineHeight: "1.6" }}>
+              LinkedIn sent a 6-digit verification code to your email or phone. Enter it below and the cloud bot will resume automatically.
+            </p>
+            <input
+              type="text"
+              maxLength={6}
+              placeholder="Enter 6-digit code"
+              value={verificationCode}
+              onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+              className="glass-input"
+              style={{ textAlign: "center", fontSize: "1.8rem", letterSpacing: "0.4em", fontWeight: 800, padding: "14px" }}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmitCode()}
+            />
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                onClick={() => setShowVerificationModal(false)}
+                className="glass-btn-secondary"
+                style={{ flex: 1, padding: "12px" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitCode}
+                disabled={isSubmittingCode || verificationCode.length < 4}
+                className="glass-btn"
+                style={{ flex: 2, padding: "12px", background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)", border: "none", opacity: verificationCode.length < 4 ? 0.5 : 1 }}
+              >
+                {isSubmittingCode ? "Sending..." : "Submit Code & Resume Bot ▶"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

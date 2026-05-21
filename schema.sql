@@ -19,6 +19,8 @@ create table public.profiles (
   search_criteria jsonb default '{}'::jsonb,
   skills text[] default '{}'::text[],
   encrypted_groq_key text,
+  linkedin_email text,
+  linkedin_password_enc text,
   session_cookies jsonb,
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );

@@ -9,6 +9,11 @@ app = Flask(__name__)
 CORS(app)
 
 bot_is_running = False
+_pending_verification_code = None
+
+# Expose the pending code for the bot thread to read
+import db as _db_module
+_db_module._pending_code_store = lambda: _pending_verification_code
 
 def background_task():
     global bot_is_running
@@ -42,6 +47,16 @@ def start_crawl():
     thread.start()
     
     return jsonify({"message": "Bot launched successfully"}), 200
+
+@app.route('/submit-code', methods=['POST'])
+def submit_code():
+    global _pending_verification_code
+    data = request.get_json()
+    code = data.get("code", "").strip()
+    if not code:
+        return jsonify({"error": "No code provided"}), 400
+    _pending_verification_code = code
+    return jsonify({"message": "Code received"}), 200
 
 if __name__ == '__main__':
     # Start the server on port 8080 (standard for Render and other PaaS)

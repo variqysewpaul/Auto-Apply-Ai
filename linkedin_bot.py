@@ -1,14 +1,83 @@
 import os
+import json
 from playwright.sync_api import sync_playwright, BrowserContext
+import db
 
 STATE_FILE = "linkedin_state.json"
 
-def get_authenticated_context(p, headless=False, session_cookies=None) -> BrowserContext:
+def login_with_credentials(page, email, password):
     """
-    Initializes a Playwright browser context. If a saved session exists, it uses it.
-    Otherwise, it forces the user to log in manually and saves the session.
+    Logs into LinkedIn using email and password via Playwright.
+    Handles the verification code page by emitting a human intervention event.
+    Returns True if login succeeded, False otherwise.
     """
-    # Standardize args to masquerade as an organic Windows Desktop browser
+    print(f"Attempting credential-based login for {email}...")
+    db.log_bot_event("log", {"message": "Attempting LinkedIn credential login..."})
+
+    try:
+        page.goto("https://www.linkedin.com/login", timeout=30000, wait_until="domcontentloaded")
+        page.fill("#username", email)
+        page.fill("#password", password)
+        page.click("button[type='submit']")
+
+        # Wait to see what happens next (max 15 seconds)
+        page.wait_for_timeout(3000)
+
+        # Case 1: Successfully logged in — global nav is present
+        if page.query_selector("#global-nav"):
+            print("✅ Credential login successful!")
+            db.log_bot_event("log", {"message": "✅ LinkedIn login successful via credentials."})
+            return True
+
+        # Case 2: LinkedIn is asking for a verification code (2FA / checkpoint)
+        if page.query_selector("input[name='pin']") or "checkpoint" in page.url or "challenge" in page.url:
+            print("⚠️ LinkedIn is requesting a verification code.")
+            db.log_bot_event("verification_required", {
+                "message": "LinkedIn requires a verification code. Please check your email or phone and enter the code in the dashboard."
+            })
+
+            # Poll Supabase for the code to be submitted by the user via the dashboard
+            import time
+            max_wait = 180  # 3 minutes
+            elapsed = 0
+            while elapsed < max_wait:
+                time.sleep(5)
+                elapsed += 5
+                code = db.get_pending_verification_code()
+                if code:
+                    print(f"✅ Received verification code: {code}")
+                    page.fill("input[name='pin']", code)
+                    page.click("button[type='submit']")
+                    page.wait_for_timeout(3000)
+                    if page.query_selector("#global-nav"):
+                        db.log_bot_event("log", {"message": "✅ Verification code accepted. Login complete."})
+                        return True
+                    else:
+                        db.log_bot_event("log", {"message": "⚠️ Verification code was rejected. Please try again."})
+                        return False
+
+            db.log_bot_event("log", {"message": "⏱️ Timed out waiting for verification code."})
+            return False
+
+        # Case 3: Something else went wrong
+        print("❌ Login failed. Unknown state after login attempt.")
+        db.log_bot_event("log", {"message": "❌ LinkedIn login failed. Please check your credentials."})
+        return False
+
+    except Exception as e:
+        print(f"Error during credential login: {e}")
+        db.log_bot_event("log", {"message": f"❌ Login error: {str(e)}"})
+        return False
+
+
+def get_authenticated_context(p, headless=True, session_cookies=None) -> BrowserContext:
+    """
+    Initializes a Playwright browser context.
+    Priority:
+      1. Use session_cookies from Supabase (fastest, no re-login)
+      2. Use local linkedin_state.json fallback
+      3. Fall back to credential-based login using stored credentials
+    """
     context_args = {
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "viewport": {"width": 1920, "height": 1080},
@@ -20,40 +89,24 @@ def get_authenticated_context(p, headless=False, session_cookies=None) -> Browse
     }
 
     browser = p.chromium.launch(headless=headless)
-    
-    # Check if we have a saved session passed in (e.g. from Supabase)
+
+    # Priority 1: Supabase session cookies
     if session_cookies:
         print("Loading saved LinkedIn session from Cloud Database...")
         context = browser.new_context(storage_state=session_cookies, **context_args)
-    # Fallback to local file if it exists
+    # Priority 2: Local file fallback
     elif os.path.exists(STATE_FILE):
         print("Loading saved LinkedIn session from local disk...")
         context = browser.new_context(storage_state=STATE_FILE, **context_args)
     else:
-        print("No saved session found. Starting fresh with stealth context...")
+        print("No saved session found. Creating fresh context...")
         context = browser.new_context(**context_args)
 
-    # Inject initialization scripts to clear webdriver properties and spoof standard plugins/languages
+    # Inject stealth scripts
     context.add_init_script("""
-        // Hide webdriver flag
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
-
-        // Spoof languages
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['en-US', 'en']
-        });
-
-        // Spoof chrome object
-        window.chrome = {
-            runtime: {},
-            loadTimes: function() {},
-            csi: function() {},
-            app: {}
-        };
-
-        // Spoof standard plugins
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
         Object.defineProperty(navigator, 'plugins', {
             get: () => [
                 { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
@@ -66,33 +119,33 @@ def get_authenticated_context(p, headless=False, session_cookies=None) -> Browse
     page = context.new_page()
     print("Connecting to LinkedIn...")
     page.goto("https://www.linkedin.com/", timeout=60000, wait_until="domcontentloaded")
-    
-    # Check if we are actually logged in by looking for the global nav bar that only appears when logged in
+
+    # Check if already logged in
     try:
-        # Wait up to 5 seconds to see if the nav bar appears (meaning we are logged in)
         page.wait_for_selector("#global-nav", timeout=5000)
         print("Successfully authenticated with LinkedIn!")
     except Exception:
-        print("\n" + "="*40)
-        print("ACTION REQUIRED: MANUAL LOGIN")
-        print("="*40)
-        print("Please look at the opened browser window.")
-        print("Log in to your LinkedIn account.")
-        print("You have 90 seconds to enter your credentials, complete any captchas, and log in.")
-        print("="*40 + "\n")
-        
-        # Wait up to 90 seconds for the user to log in manually
-        try:
-            page.wait_for_selector("#global-nav", timeout=90000)
-            print("Login successful! Saving your session securely...")
-            # Save the cookies and local storage so we never have to login manually again
-            context.storage_state(path=STATE_FILE)
-            print(f"Session saved to {STATE_FILE}. You won't need to log in next time.")
-        except Exception:
-            print("Timeout waiting for login. The script will now exit. Please run it again.")
+        # Not logged in — try credential-based login
+        print("Session expired or not found. Attempting credential-based login...")
+        email, password = db.get_linkedin_credentials()
+
+        if email and password:
+            success = login_with_credentials(page, email, password)
+            if success:
+                # Save fresh cookies back to Supabase so next run is instant
+                storage = context.storage_state()
+                db.save_session_cookies(storage)
+                # Also save locally
+                context.storage_state(path=STATE_FILE)
+            else:
+                print("Login failed. Exiting.")
+                browser.close()
+                exit(1)
+        else:
+            print("No credentials found in Supabase. Cannot log in automatically.")
+            db.log_bot_event("log", {"message": "❌ No LinkedIn credentials configured. Please add them in the Settings tab."})
             browser.close()
             exit(1)
-    
-    # Close the temporary verification page
+
     page.close()
     return context

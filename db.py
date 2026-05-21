@@ -146,6 +146,59 @@ def fetch_user_profile():
         print(f"Failed to fetch profile from Supabase: {e}")
     return None
 
+def get_linkedin_credentials():
+    """
+    Fetch the user's stored LinkedIn email and password from Supabase profiles.
+    Returns a tuple (email, password) or (None, None) if not set.
+    """
+    headers = get_auth_headers()
+    if not headers or not _user_id:
+        return None, None
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/profiles?id=eq.{_user_id}&select=linkedin_email,linkedin_password_enc"
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and len(data) > 0:
+                row = data[0]
+                return row.get("linkedin_email"), row.get("linkedin_password_enc")
+    except Exception as e:
+        print(f"Failed to fetch LinkedIn credentials: {e}")
+    return None, None
+
+def save_session_cookies(cookies):
+    """
+    Save fresh LinkedIn session cookies back to the user's Supabase profile row.
+    Called by the bot after a successful credential-based login.
+    """
+    headers = get_auth_headers()
+    if not headers or not _user_id:
+        return
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/profiles?id=eq.{_user_id}"
+        headers["Prefer"] = "return=minimal"
+        resp = requests.patch(url, headers=headers, json={"session_cookies": cookies}, timeout=10)
+        if resp.status_code in [200, 204]:
+            print("✅ Session cookies saved to Supabase for future logins.")
+        else:
+            print(f"Failed to save session cookies: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"Error saving session cookies: {e}")
+
+# Callable injected at runtime by server.py so the bot thread can poll for the verification code
+_pending_code_store = None
+
+def get_pending_verification_code():
+    """
+    Returns the verification code submitted via /submit-code endpoint, then clears it.
+    Returns None if no code has been submitted yet.
+    """
+    global _pending_code_store
+    if _pending_code_store and callable(_pending_code_store):
+        code = _pending_code_store()
+        return code
+    return None
+
 # ── Local SQLite database operations ─────────────────────
 
 def init_db():
