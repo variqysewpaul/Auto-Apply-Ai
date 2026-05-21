@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "AutoApply Pro Cookie Sync",
+  "version": "1.0",
+  "description": "Automatically syncs your LinkedIn session to the AutoApply Pro Cloud Bot.",
+  "permissions": [
+    "cookies"
+  ],
+  "host_permissions": [
+    "*://*.linkedin.com/*",
+    "*://localhost/*",
+    "*://auto-apply-ai.vercel.app/*",
+    "*://*.auto-apply-ai.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://localhost/*",
+        "*://auto-apply-ai.vercel.app/*",
+        "*://*.auto-apply-ai.vercel.app/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -99,6 +99,7 @@ export default function DashboardPage() {
   
   // Setup Guide Checklist Step (1: API Key, 2: CV upload, 3: Launch Ready)
   const [onboardingStep, setOnboardingStep] = useState<number>(1);
+  const [isExtensionReady, setIsExtensionReady] = useState<boolean>(false);
 
   // Sandbox simulated records
   const sandboxApplicationsList: ApplicationRecord[] = [
@@ -738,6 +739,38 @@ on conflict (id) do nothing;`);
       setAlertMessage({ type: "info", text: "Could not read clipboard. Please paste manually." });
     }
     setTimeout(() => setAlertMessage(null), 3000);
+  };
+
+  // Listen for Chrome Extension
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data?.type === "AUTOAPPLY_EXTENSION_READY") {
+        setIsExtensionReady(true);
+      }
+      if (event.data?.type === "AUTOAPPLY_SYNC_RESPONSE" && event.data.cookies) {
+        if (isSupabaseConnected && supabaseUser) {
+          const { error } = await supabase
+            .from("profiles")
+            .update({ session_cookies: event.data.cookies })
+            .eq("id", supabaseUser.id);
+            
+          if (error) {
+            setAlertMessage({ type: "info", text: "Failed to upload extension cookies." });
+          } else {
+            setAlertMessage({ type: "success", text: "LinkedIn session auto-synced successfully via Extension!" });
+          }
+        } else {
+          setAlertMessage({ type: "info", text: "Please connect to Supabase first." });
+        }
+        setTimeout(() => setAlertMessage(null), 3000);
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [isSupabaseConnected, supabaseUser]);
+
+  const handleAutoSync = () => {
+    window.postMessage({ type: "AUTOAPPLY_SYNC_REQUEST" }, "*");
   };
 
   // Auto-scroll terminal logs
@@ -2972,26 +3005,42 @@ on conflict (id) do nothing;`);
               
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <h4 style={{ fontSize: "1rem", fontWeight: 700 }}>Upload linkedin_state.json</h4>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 700 }}>
+                    {isExtensionReady ? "Auto-Sync LinkedIn Session" : "Upload linkedin_state.json"}
+                  </h4>
                   <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "4px", maxWidth: "600px" }}>
-                    Bypass cloud CAPTCHAs by securely uploading your local laptop's authenticated LinkedIn session. The cloud bot will masquerade as your laptop.
+                    {isExtensionReady 
+                      ? "The AutoApply Extension is installed! Click the button to instantly sync your LinkedIn session directly to the cloud bot without dealing with JSON files."
+                      : "Bypass cloud CAPTCHAs by securely uploading your local laptop's authenticated LinkedIn session. The cloud bot will masquerade as your laptop."}
                   </p>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "12px" }}>
-                  <input 
-                    type="file" 
-                    accept=".json"
-                    id="session-upload"
-                    style={{ display: "none" }}
-                    onChange={handleSessionUpload}
-                  />
-                  <label 
-                    htmlFor="session-upload"
-                    className="glass-btn" 
-                    style={{ padding: "8px 16px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", background: "rgba(52, 211, 153, 0.15)", borderColor: "var(--color-success)", color: "var(--color-success)" }}
-                  >
-                    <span>📤</span> Upload Session
-                  </label>
+                  {isExtensionReady ? (
+                    <button 
+                      onClick={handleAutoSync}
+                      className="glass-btn" 
+                      style={{ padding: "8px 16px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", background: "rgba(59, 130, 246, 0.15)", borderColor: "var(--color-accent)", color: "var(--color-accent)" }}
+                    >
+                      <span>🔄</span> Auto-Sync Session
+                    </button>
+                  ) : (
+                    <>
+                      <input 
+                        type="file" 
+                        accept=".json"
+                        id="session-upload"
+                        style={{ display: "none" }}
+                        onChange={handleSessionUpload}
+                      />
+                      <label 
+                        htmlFor="session-upload"
+                        className="glass-btn" 
+                        style={{ padding: "8px 16px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", background: "rgba(52, 211, 153, 0.15)", borderColor: "var(--color-success)", color: "var(--color-success)" }}
+                      >
+                        <span>📤</span> Upload Session
+                      </label>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
