@@ -30,6 +30,16 @@ SUPABASE_USER_PASSWORD = os.getenv("SUPABASE_USER_PASSWORD")
 _jwt_token = None
 _user_id = None
 
+def set_supabase_config(url: str, anon_key: str):
+    """Dynamically set the Supabase URL and Anon Key at runtime.
+    Called by server.py immediately after the /start-crawl request arrives,
+    ensuring the bot matches the frontend's database exactly.
+    """
+    global SUPABASE_URL, SUPABASE_ANON_KEY
+    SUPABASE_URL = url
+    SUPABASE_ANON_KEY = anon_key
+    print(f"Supabase configured at runtime: {url}")
+
 def set_user_token(jwt_token: str, user_id: str):
     """Inject an already-authenticated JWT + user_id so the bot skips the
     email/password login and operates on behalf of the correct user.
@@ -39,6 +49,7 @@ def set_user_token(jwt_token: str, user_id: str):
     _jwt_token = jwt_token
     _user_id = user_id
     print(f"Bot authenticated as user: {user_id}")
+
 
 def get_auth_headers():
     global _jwt_token, _user_id

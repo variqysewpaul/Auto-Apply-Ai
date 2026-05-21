@@ -728,10 +728,20 @@ on conflict (id) do nothing;`);
           return;
         }
 
+        // Send the frontend's Supabase credentials to the backend as well
+        // so the backend dynamically connects to the exact same database.
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
         const response = await fetch(`${apiUrl}/start-crawl`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jwt_token: jwtToken, user_id: userId })
+          body: JSON.stringify({ 
+            jwt_token: jwtToken, 
+            user_id: userId,
+            supabase_url: supabaseUrl,
+            supabase_anon_key: supabaseAnonKey
+          })
         });
 
         if (!response.ok) {
@@ -746,6 +756,7 @@ on conflict (id) do nothing;`);
       }
     }
   };
+
 
   const handleSessionUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

@@ -40,13 +40,20 @@ def start_crawl():
     if bot_is_running:
         return jsonify({"error": "Bot is already running"}), 409
 
-    # Extract the user's Supabase JWT and user_id from the request body
+    # Extract the user's Supabase JWT, user_id, and optional config from the request body
     data = request.get_json(silent=True) or {}
     jwt_token = data.get("jwt_token", "")
     user_id   = data.get("user_id", "")
+    supabase_url = data.get("supabase_url", "")
+    supabase_anon_key = data.get("supabase_anon_key", "")
 
     if not jwt_token or not user_id:
         return jsonify({"error": "Missing jwt_token or user_id. Cannot identify user."}), 400
+
+    # If the frontend sent its own Supabase URL/Key, configure db dynamically
+    # to guarantee 100% plug-and-play synchronization between Vercel and Render databases.
+    if supabase_url and supabase_anon_key:
+        db.set_supabase_config(supabase_url, supabase_anon_key)
 
     # Inject the user's identity into the db module so all Supabase calls
     # operate on behalf of this specific user — no hardcoded credentials needed.
@@ -59,6 +66,7 @@ def start_crawl():
     thread.start()
     
     return jsonify({"message": "Bot launched successfully"}), 200
+
 
 @app.route('/submit-code', methods=['POST'])
 def submit_code():
