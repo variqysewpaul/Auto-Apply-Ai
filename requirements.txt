@@ -6,3 +6,6 @@ gunicorn
 flask-cors
 python-dotenv
 requests
+groq
+pyperclip
+plyer
