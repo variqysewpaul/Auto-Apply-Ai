@@ -45,59 +45,82 @@ def notify_user(title: str, message: str):
 # f_AL : Easy Apply only (always true)
 
 def _build_search_url(keyword: str, criteria: dict) -> str:
-    """Dynamically build a LinkedIn jobs search URL from the config criteria."""
+    """Dynamically build a LinkedIn jobs search URL from the config criteria.
+    Supports BOTH legacy flat-bool keys (remote_only, full_time, etc.)
+    AND the new frontend array format (workplace_types, job_types, experience_levels).
+    """
     params = {
         "keywords": keyword,
         "f_AL": "true",   # Easy Apply only — always on
     }
 
+    # Normalise: if new array keys are present but old flat keys are missing, derive them
+    workplace_types  = criteria.get("workplace_types", [])
+    job_types        = criteria.get("job_types", [])
+    experience_levels = criteria.get("experience_levels", [])
+
+    is_remote  = criteria.get("remote_only") or criteria.get("remote") or "remote" in workplace_types
+    is_hybrid  = criteria.get("hybrid") or "hybrid" in workplace_types
+    is_onsite  = criteria.get("onsite") or "onsite" in workplace_types
+    is_remote_only = is_remote and not is_onsite
+
+    is_full_time   = criteria.get("full_time")   or "full-time"   in job_types
+    is_part_time   = criteria.get("part_time")   or "part-time"   in job_types
+    is_contract    = criteria.get("contract")    or "contract"    in job_types
+    is_internship  = criteria.get("internships") or "internship"  in job_types
+
+    is_entry    = criteria.get("entry_level") or "entry"      in experience_levels
+    is_assoc    = criteria.get("associate")   or "mid-senior" in experience_levels
+    is_mid_sen  = criteria.get("mid_senior")  or "mid-senior" in experience_levels
+
     # ── Location ──────────────────────────────────────────────────────────
     # When remote_only is True we intentionally skip the location parameter
     # so LinkedIn searches the entire world for remote listings.
-    # The applicant's personal city is only used inside the Easy Apply form.
-    if not criteria.get("remote_only"):
+    if not is_remote_only:
         locations = criteria.get("locations", [])
         if locations:
             params["location"] = locations[0]
 
     # ── Work Type ─────────────────────────────────────────────────────────
     wt = []
-    if criteria.get("remote_only") or criteria.get("remote"):
+    if is_remote:
         wt.append("2")
-    if criteria.get("onsite"):
+    if is_onsite:
         wt.append("1")
-    if criteria.get("hybrid"):
+    if is_hybrid:
         wt.append("3")
     if wt:
         params["f_WT"] = ",".join(wt)
 
     # ── Job Type ──────────────────────────────────────────────────────────
     jt = []
-    if criteria.get("full_time"):
+    if is_full_time:
         jt.append("F")
-    if criteria.get("part_time"):
+    if is_part_time:
         jt.append("P")
-    if criteria.get("contract"):
+    if is_contract:
         jt.append("C")
-    if criteria.get("internships"):
+    if is_internship:
         jt.append("I")
     if jt:
         params["f_JT"] = ",".join(jt)
 
     # ── Experience Level ──────────────────────────────────────────────────
     exp = []
-    if criteria.get("internships"):          # internship experience level
+    if is_internship:
         exp.append("1")
-    if criteria.get("entry_level"):
+    if is_entry:
         exp.append("2")
-    if criteria.get("associate"):
+    if is_assoc:
         exp.append("3")
-    if criteria.get("mid_senior"):
+    if is_mid_sen:
         exp.append("4")
     if exp:
         params["f_E"] = ",".join(exp)
 
-    return "https://www.linkedin.com/jobs/search/?" + urllib.parse.urlencode(params)
+    url = "https://www.linkedin.com/jobs/search/?" + urllib.parse.urlencode(params)
+    print(f"  [URL Builder] Remote={is_remote}, Hybrid={is_hybrid}, FullTime={is_full_time}, Entry={is_entry}")
+    return url
 
 
 def _linkedin_shows_applied(panel) -> bool:

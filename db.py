@@ -124,19 +124,47 @@ def fetch_user_profile():
                     "search_criteria": row.get("search_criteria", {})
                 }
                 
-                # We need to map `targetLocations` and `targetKeywords` from search_criteria
-                # into the structure `main.py` expects (`titles`, `locations`, etc.)
+                # ── Translate new frontend search_criteria format → flat bot keys ──────
+                # The frontend stores workplace_types/job_types/experience_levels as arrays.
+                # job_searcher.py _build_search_url() reads flat bool keys (remote_only, full_time, etc.)
+                # We bridge both formats here so the bot always gets the right data.
                 criteria = profile["search_criteria"]
-                
-                # If titles/locations aren't explicitly in the criteria, we build them from the new frontend fields
+
+                # --- Titles (job keywords) ---
                 if "titles" not in criteria and "targetKeywords" in criteria:
                     keywords = criteria.get("targetKeywords", "")
-                    profile["search_criteria"]["titles"] = [k.strip() for k in keywords.split(",") if k.strip()]
-                
-                if "locations" not in criteria and "targetLocations" in criteria:
-                    locations = criteria.get("targetLocations", "")
-                    profile["search_criteria"]["locations"] = [l.strip() for l in locations.split(",") if l.strip()]
+                    criteria["titles"] = [k.strip() for k in keywords.split(",") if k.strip()]
 
+                # --- Locations ---
+                if "locations" not in criteria and "targetLocations" in criteria:
+                    locations_raw = criteria.get("targetLocations", "")
+                    criteria["locations"] = [l.strip() for l in locations_raw.split(",") if l.strip()]
+
+                # --- Workplace types (new format → flat booleans) ---
+                workplace_types = criteria.get("workplace_types", [])
+                if workplace_types:
+                    criteria["remote_only"] = "remote" in workplace_types and "onsite" not in workplace_types
+                    criteria["remote"]  = "remote" in workplace_types
+                    criteria["hybrid"]  = "hybrid" in workplace_types
+                    criteria["onsite"]  = "onsite" in workplace_types
+
+                # --- Job types (new format → flat booleans) ---
+                job_types = criteria.get("job_types", [])
+                if job_types:
+                    criteria["full_time"]    = "full-time" in job_types
+                    criteria["part_time"]    = "part-time" in job_types
+                    criteria["contract"]     = "contract" in job_types
+                    criteria["internships"]  = "internship" in job_types
+                    criteria["temporary"]    = "temporary" in job_types
+
+                # --- Experience levels (new format → flat booleans) ---
+                experience_levels = criteria.get("experience_levels", [])
+                if experience_levels:
+                    criteria["entry_level"] = "entry" in experience_levels
+                    criteria["associate"]   = "mid-senior" in experience_levels  # LinkedIn groups these
+                    criteria["mid_senior"]  = "mid-senior" in experience_levels
+
+                profile["search_criteria"] = criteria
                 return profile
             else:
                 print("No profile found for this user in Supabase.")
