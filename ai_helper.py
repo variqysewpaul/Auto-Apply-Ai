@@ -6,14 +6,20 @@ from dotenv import load_dotenv
 # Load environment variables from .env
 load_dotenv()
 
-# Initialize Groq client
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+def get_client(profile_data: dict) -> Groq:
+    """Returns a Groq client using the key from the profile or fallback to .env"""
+    api_key = profile_data.get("groqKey") or os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        print("Warning: No Groq API Key found in profile or .env")
+    return Groq(api_key=api_key)
 
 def generate_cover_letter(job_description: str, profile_data: dict) -> str:
     """
     Uses Llama 3 on Groq to generate a highly tailored cover letter.
     """
     print("AI is reading the job description and writing the cover letter...")
+    
+    client = get_client(profile_data)
     
     system_prompt = (
         "You are an expert career coach and professional cover letter writer. "
@@ -56,6 +62,8 @@ def evaluate_job_fit(job_description: str, profile_data: dict) -> bool:
     Returns True if it's a fit, False if there's a hard disqualifier.
     """
     print("AI is evaluating job fit against your profile...")
+    
+    client = get_client(profile_data)
     
     system_prompt = (
         "You are an expert technical recruiter evaluating a candidate against a job description. "
@@ -106,6 +114,8 @@ def answer_custom_questions(questions: list, profile_data: dict) -> dict:
         return {}
         
     print(f"AI is answering {len(questions)} custom form questions...")
+    
+    client = get_client(profile_data)
     
     system_prompt = (
         "You are an expert recruitment assistant. Your job is to answer form questions "

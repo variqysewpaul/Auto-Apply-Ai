@@ -6,19 +6,17 @@ from linkedin_bot import get_authenticated_context
 from job_searcher import search_and_extract_jobs, apply_to_job, notify_user
 import db
 
-def load_profile():
-    try:
-        with open('config.json', 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("Error: config.json not found.")
-        return None
-
 def main():
     print("Starting Job Search Automation...")
-    profile = load_profile()
+    profile = db.fetch_user_profile()
     if not profile:
-        return
+        print("Falling back to local config.json...")
+        try:
+            with open('config.json', 'r') as f:
+                profile = json.load(f)
+        except FileNotFoundError:
+            print("Error: config.json not found and Supabase fetch failed.")
+            return
 
     criteria = profile.get("search_criteria", {})
     print("Profile loaded successfully.")

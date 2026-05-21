@@ -90,6 +90,61 @@ def log_bot_event(event_type, payload):
         except Exception:
             pass
 
+def fetch_user_profile():
+    """
+    Fetch the authenticated user's profile from Supabase.
+    Returns a mapped profile dictionary or None.
+    """
+    headers = get_auth_headers()
+    if not headers or not _user_id:
+        print("Cannot fetch profile: Not authenticated with Supabase.")
+        return None
+        
+    try:
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/profiles?id=eq.{_user_id}&select=*"
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and len(data) > 0:
+                row = data[0]
+                
+                # Map Supabase row to the profile dictionary expected by main.py
+                profile = {
+                    "fullName": row.get("full_name", ""),
+                    "phone": row.get("phone", ""),
+                    "address": row.get("address", ""),
+                    "city": row.get("city", ""),
+                    "githubUrl": row.get("github_url", ""),
+                    "linkedinUrl": row.get("linkedin_url", ""),
+                    "skills": ", ".join(row.get("skills", [])),
+                    # The frontend stores it plainly or base64 encoded depending on implementation. 
+                    # For now we pull the raw value to pass to the groq client.
+                    "groqKey": row.get("encrypted_groq_key", ""),
+                    "search_criteria": row.get("search_criteria", {})
+                }
+                
+                # We need to map `targetLocations` and `targetKeywords` from search_criteria
+                # into the structure `main.py` expects (`titles`, `locations`, etc.)
+                criteria = profile["search_criteria"]
+                
+                # If titles/locations aren't explicitly in the criteria, we build them from the new frontend fields
+                if "titles" not in criteria and "targetKeywords" in criteria:
+                    keywords = criteria.get("targetKeywords", "")
+                    profile["search_criteria"]["titles"] = [k.strip() for k in keywords.split(",") if k.strip()]
+                
+                if "locations" not in criteria and "targetLocations" in criteria:
+                    locations = criteria.get("targetLocations", "")
+                    profile["search_criteria"]["locations"] = [l.strip() for l in locations.split(",") if l.strip()]
+
+                return profile
+            else:
+                print("No profile found for this user in Supabase.")
+        else:
+            print(f"Error fetching profile: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"Failed to fetch profile from Supabase: {e}")
+    return None
+
 # ── Local SQLite database operations ─────────────────────
 
 def init_db():
