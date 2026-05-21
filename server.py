@@ -30,9 +30,15 @@ CORS(app)
 bot_is_running = False
 _pending_verification_code = None
 
+def _get_and_clear_pending_code():
+    global _pending_verification_code
+    code = _pending_verification_code
+    _pending_verification_code = None  # Clear/consume the code once retrieved
+    return code
+
 # Expose the pending code for the bot thread to read
 import db as _db_module
-_db_module._pending_code_store = lambda: _pending_verification_code
+_db_module._pending_code_store = _get_and_clear_pending_code
 
 def background_task():
     global bot_is_running

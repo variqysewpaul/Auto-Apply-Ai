@@ -30,13 +30,28 @@ def login_with_credentials(page, email, password):
             return True
 
         # Case 2: LinkedIn is asking for a verification code (2FA / checkpoint)
-        if page.query_selector("input[name='pin']") or "checkpoint" in page.url or "challenge" in page.url:
+        pin_selectors = [
+            "input[name='pin']",
+            "input[id*='pin']",
+            "input[id*='verification']",
+            "input[autocomplete*='one-time-code']"
+        ]
+        
+        def find_pin_input():
+            for selector in pin_selectors:
+                el = page.query_selector(selector)
+                if el:
+                    return selector
+            return None
+
+        has_pin = find_pin_input()
+        if has_pin or "checkpoint" in page.url or "challenge" in page.url:
             print("⚠️ LinkedIn is requesting a verification code.")
             db.log_bot_event("verification_required", {
                 "message": "LinkedIn requires a verification code. Please check your email or phone and enter the code in the dashboard."
             })
 
-            # Poll Supabase for the code to be submitted by the user via the dashboard
+            # Poll for the code to be submitted by the user via the dashboard
             import time
             max_wait = 180  # 3 minutes
             elapsed = 0
@@ -46,14 +61,40 @@ def login_with_credentials(page, email, password):
                 code = db.get_pending_verification_code()
                 if code:
                     print(f"✅ Received verification code: {code}")
-                    page.fill("input[name='pin']", code)
-                    page.click("button[type='submit']")
-                    page.wait_for_timeout(3000)
-                    if page.query_selector("#global-nav"):
-                        db.log_bot_event("log", {"message": "✅ Verification code accepted. Login complete."})
-                        return True
+                    active_pin = find_pin_input()
+                    if active_pin:
+                        page.fill(active_pin, code)
+                        page.wait_for_timeout(1000)
+                        
+                        # Find and click submit button
+                        submit_btn = page.query_selector("button[type='submit'], #email-pin-submit-button, button[id*='submit']")
+                        if submit_btn:
+                            submit_btn.click()
+                        else:
+                            page.keyboard.press("Enter")
+                            
+                        page.wait_for_timeout(5000)
+                        
+                        if page.query_selector("#global-nav"):
+                            db.log_bot_event("log", {"message": "✅ Verification code accepted. Login complete."})
+                            return True
+                        
+                        # If still on PIN verification, code was rejected
+                        still_has_pin = find_pin_input()
+                        if still_has_pin:
+                            print("⚠️ Verification code rejected by LinkedIn.")
+                            db.log_bot_event("log", {"message": "⚠️ Verification code was rejected or expired. Please check and enter the new code."})
+                            db.log_bot_event("verification_required", {
+                                "message": "Previous code was invalid. Please check and enter the correct 6-digit code."
+                            })
+                            continue
+                        else:
+                            print("⚠️ Left PIN page but global navigation is missing.")
+                            db.log_bot_event("log", {"message": "⚠️ Left PIN page but global-nav not found. Attempting to continue..."})
+                            return False
                     else:
-                        db.log_bot_event("log", {"message": "⚠️ Verification code was rejected. Please try again."})
+                        print("⚠️ Pin input field not found on page anymore.")
+                        db.log_bot_event("log", {"message": "⚠️ Verification pin field disappeared. Check browser logs."})
                         return False
 
             db.log_bot_event("log", {"message": "⏱️ Timed out waiting for verification code."})

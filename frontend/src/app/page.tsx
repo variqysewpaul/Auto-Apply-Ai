@@ -32,6 +32,7 @@ export default function DashboardPage() {
   ]);
   const [crawlStep, setCrawlStep] = useState<number>(0);
   const consoleEndRef = useRef<HTMLDivElement>(null);
+  const processedEventIdsRef = useRef<Set<number>>(new Set());
 
   // Telemetry Sync States
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(false);
@@ -182,6 +183,32 @@ export default function DashboardPage() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Auto-reconnect to active background campaign if running
+  useEffect(() => {
+    const checkBotHealth = async () => {
+      if (!isSupabaseConnected || !supabaseUser || sandboxMode) return;
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_BOT_API_URL || "http://localhost:8080";
+        const response = await fetch(`${apiUrl}/health`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.bot_running) {
+            setIsCampaignRunning(true);
+            setConsoleLogs(prev => [
+              ...prev,
+              "🤖 [System] Connected to active cloud bot session successfully!"
+            ]);
+          }
+        }
+      } catch (err) {
+        // Suppress errors (bot server might be spinning down or local port not open)
+      }
+    };
+
+    const timer = setTimeout(checkBotHealth, 2000);
+    return () => clearTimeout(timer);
+  }, [isSupabaseConnected, supabaseUser, sandboxMode]);
 
   // Sync state between sandbox / database
   useEffect(() => {
@@ -964,6 +991,49 @@ on conflict (id) do nothing;`);
       ]);
       setEasyApplyStep(1);
 
+      // Event processor to prevent duplicate event display and log telemetry gracefully
+      const processBotEvent = (ev: any) => {
+        if (!ev || !ev.id) return;
+        if (processedEventIdsRef.current.has(ev.id)) return;
+        processedEventIdsRef.current.add(ev.id);
+
+        const type = ev.event_type;
+        const data = ev.payload || {};
+
+        if (type === "navigating") {
+          setMockBrowserUrl(data.url || "https://www.linkedin.com/jobs");
+          setConsoleLogs(prev => [...prev, `🌐 [Network] Navigating to: ${data.keyword || "Job Listing"}`]);
+          setEasyApplyStep(1);
+        } else if (type === "typing") {
+          setActiveElement(data.field || "");
+          setActiveValue(data.value || "");
+          setConsoleLogs(prev => [...prev, `✏️ [AI Solver] Typing: ${data.field} -> "${data.value}"`]);
+          setEasyApplyStep(2);
+        } else if (type === "clicking") {
+          setConsoleLogs(prev => [...prev, `⚡ [Action] Clicking: "${data.button}"`]);
+          if (data.button === "Submit Application") {
+            setEasyApplyStep(3);
+          }
+        } else if (type === "success") {
+          setConsoleLogs(prev => [...prev, `🎉 [Applied] Successfully submitted to ${data.company || "job"}!`]);
+          setEasyApplyStep(3);
+          loadSupabaseApplications();
+        } else if (type === "mismatch") {
+          setConsoleLogs(prev => [...prev, `🛑 [Skipped] Fit failure: ${data.reason}`]);
+          setEasyApplyStep(0);
+        } else if (type === "waiting_for_user") {
+          setWaitingForUser(true);
+          setManualQuestion(data.question || "Verification details required.");
+          setConsoleLogs(prev => [...prev, `⚠️ [Human Control] Paused at verification check: "${data.question}"`]);
+        } else if (type === "log") {
+          setConsoleLogs(prev => [...prev, `🤖 Playwright: ${data.message}`]);
+        } else if (type === "verification_required") {
+          setShowVerificationModal(true);
+          setConsoleLogs(prev => [...prev, `📱 [2FA Required] LinkedIn sent a verification code to your phone or email. Enter it in the popup.`]);
+        }
+      };
+
+      // 1. WebSocket listener for instant streaming
       const sub = supabase
         .channel("crawler-telemetry")
         .on(
@@ -974,47 +1044,39 @@ on conflict (id) do nothing;`);
             table: "bot_events"
           },
           (payload) => {
-            const ev = payload.new;
-            const type = ev.event_type;
-            const data = ev.payload || {};
-
-            if (type === "navigating") {
-              setMockBrowserUrl(data.url || "https://www.linkedin.com/jobs");
-              setConsoleLogs(prev => [...prev, `🌐 [Network] Navigating to: ${data.keyword || "Job Listing"}`]);
-              setEasyApplyStep(1);
-            } else if (type === "typing") {
-              setActiveElement(data.field || "");
-              setActiveValue(data.value || "");
-              setConsoleLogs(prev => [...prev, `✏️ [AI Solver] Typing: ${data.field} -> "${data.value}"`]);
-              setEasyApplyStep(2);
-            } else if (type === "clicking") {
-              setConsoleLogs(prev => [...prev, `⚡ [Action] Clicking: "${data.button}"`]);
-              if (data.button === "Submit Application") {
-                setEasyApplyStep(3);
-              }
-            } else if (type === "success") {
-              setConsoleLogs(prev => [...prev, `🎉 [Applied] Successfully submitted to ${data.company}!`]);
-              setEasyApplyStep(3);
-              loadSupabaseApplications();
-            } else if (type === "mismatch") {
-              setConsoleLogs(prev => [...prev, `🛑 [Skipped] Fit failure: ${data.reason}`]);
-              setEasyApplyStep(0);
-            } else if (type === "waiting_for_user") {
-              setWaitingForUser(true);
-              setManualQuestion(data.question || "Verification details required.");
-              setConsoleLogs(prev => [...prev, `⚠️ [Human Control] Paused at verification check: "${data.question}"`]);
-            } else if (type === "log") {
-              setConsoleLogs(prev => [...prev, `🤖 Playwright: ${data.message}`]);
-            } else if (type === "verification_required") {
-              setShowVerificationModal(true);
-              setConsoleLogs(prev => [...prev, `📱 [2FA Required] LinkedIn sent a verification code to your phone or email. Enter it in the popup.`]);
-            }
+            processBotEvent(payload.new);
           }
         )
         .subscribe();
 
+      // 2. Database Polling Fallback loop (for environments where real-time websockets are disabled/unconfigured in Supabase)
+      const pollEvents = async () => {
+        try {
+          const { data, error } = await supabase
+            .from("bot_events")
+            .select("*")
+            .eq("user_id", supabaseUser.id)
+            .order("id", { ascending: true })
+            .limit(100);
+          
+          if (error) throw error;
+          if (data) {
+            data.forEach((ev: any) => processBotEvent(ev));
+          }
+        } catch (err) {
+          console.error("Error polling bot events fallback:", err);
+        }
+      };
+
+      // Run initial poll instantly
+      pollEvents();
+
+      // Poll database every 3 seconds to guarantee telemetry ingestion
+      const pollInterval = setInterval(pollEvents, 3000);
+
       return () => {
         supabase.removeChannel(sub);
+        clearInterval(pollInterval);
       };
     }
   }, [isCampaignRunning, botPaused, waitingForUser, sandboxMode]);
