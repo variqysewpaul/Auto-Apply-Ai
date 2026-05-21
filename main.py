@@ -19,11 +19,14 @@ def main():
             return
 
     criteria = profile.get("search_criteria", {})
+    show_browser = criteria.get("showBrowser", True)
+    
     print("Profile loaded successfully.")
     print(f"  Targets: {', '.join(criteria.get('titles', []))}")
+    print(f"  Browser Visibility: {'ON' if show_browser else 'OFF (Headless)'}")
 
     with sync_playwright() as p:
-        context = get_authenticated_context(p, headless=False)
+        context = get_authenticated_context(p, headless=not show_browser)
         page = context.new_page()
 
         for target_job in criteria.get("titles", []):

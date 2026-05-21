@@ -78,7 +78,8 @@ export default function DashboardPage() {
     experienceMidSenior: true,
     experienceDirector: false,
     minMatchScore: 80,
-    maxDailyApps: 25
+    maxDailyApps: 25,
+    showBrowser: true
   });
 
   // Supabase Auth Form States
@@ -202,7 +203,8 @@ export default function DashboardPage() {
         experienceMidSenior: true,
         experienceDirector: false,
         minMatchScore: 85,
-        maxDailyApps: 20
+        maxDailyApps: 20,
+        showBrowser: true
       });
       setFileName("alex_rivera_resume.pdf");
     } else if (!supabaseUser) {
@@ -231,7 +233,8 @@ export default function DashboardPage() {
         experienceMidSenior: true,
         experienceDirector: false,
         minMatchScore: 80,
-        maxDailyApps: 25
+        maxDailyApps: 25,
+        showBrowser: true
       });
       setFileName("");
       setApplications([]);
@@ -307,7 +310,8 @@ export default function DashboardPage() {
             experienceMidSenior: sc.experience_levels ? sc.experience_levels.includes("mid-senior") : true,
             experienceDirector: sc.experience_levels ? sc.experience_levels.includes("director") : false,
             minMatchScore: sc.min_match_score || 80,
-            maxDailyApps: sc.max_daily_apps || 25
+            maxDailyApps: sc.max_daily_apps || 25,
+            showBrowser: sc.showBrowser !== undefined ? sc.showBrowser : true
           });
 
           if (data.full_name) {
@@ -580,7 +584,8 @@ Text: ${text}`;
           job_types: jobTypes,
           experience_levels: experienceLevels,
           min_match_score: Number(profile.minMatchScore),
-          max_daily_apps: Number(profile.maxDailyApps)
+          max_daily_apps: Number(profile.maxDailyApps),
+          showBrowser: profile.showBrowser
         };
 
         // Try updating first since the trigger usually pre-provisions the row.
@@ -2876,6 +2881,41 @@ on conflict (id) do nothing;`);
                       <span>💾</span> Save Configuration
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bot Execution Visibility Panel */}
+            <div className="glass-panel" style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "24px" }}>
+              <h3 style={{ fontFamily: "var(--font-family-title)", fontSize: "1.2rem", fontWeight: 700, borderBottom: "1px solid var(--border-glass)", paddingBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span>🖥️</span> Bot Execution Visibility
+              </h3>
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 700 }}>Show Crawler Browser</h4>
+                  <p style={{ fontSize: "0.85rem", color: "var(--color-text-secondary)", marginTop: "4px", maxWidth: "600px" }}>
+                    If enabled, the Playwright browser will pop up visibly on your screen so you can watch the bot work. If disabled, the bot will run completely silently in the background (headless mode), and you can track its progress exclusively via the Launch Pad terminal logs.
+                  </p>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "12px" }}>
+                  <label className="toggle-switch">
+                    <input 
+                      type="checkbox" 
+                      checked={profile.showBrowser}
+                      onChange={(e) => {
+                        setProfile({ ...profile, showBrowser: e.target.checked });
+                      }}
+                    />
+                    <span className="slider round"></span>
+                  </label>
+                  <button 
+                    onClick={handleSaveProfile} 
+                    className="glass-btn" 
+                    style={{ padding: "6px 12px", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "6px" }}
+                  >
+                    <span>💾</span> Save
+                  </button>
                 </div>
               </div>
             </div>
